@@ -190,7 +190,7 @@ Core.prototype = {
 var CoreModule = {
 	echo: function(echoThis) {
 		console.log("magie:", echoThis, this.requestId);
-		this.socket.write("magie:" + echoThis + " " + this.requestId);
+		this.socket.write(this.core.createJsonRpcResponse(this.requestId, echoThis));
 	},
 
 	registerModule: function(name, methods) {
@@ -453,7 +453,7 @@ var core = new Core(function() {
 			try {
 				var message = JSON.parse(data);
 			} catch(e) {
-				console.log("Could not parse incoming JSON data.", e);
+				console.log("Could not parse incoming JSON data:",data.toString(),"Reason:", e);
 				// TODO send error event response
 				return
 			}
