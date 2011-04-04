@@ -1,6 +1,7 @@
 package rpctest;
 
 import org.json.rpc.client.JsonRpcInvoker;
+import org.json.rpc.commons.JsonRpcRemoteException;
 import org.json.rpc.server.JsonRpcExecutor;
 import org.json.rpc.server.JsonRpcServerTransport;
 
@@ -14,6 +15,7 @@ import org.json.rpc.server.JsonRpcServerTransport;
  */
 interface Core {
 	String echo(String input);
+	boolean registerModule(String name, String[] methods);
 }
 
 interface RPCTestModule {
@@ -45,7 +47,13 @@ class RequestReceiver<E> implements JsonRpcRequestReceiver, JsonRpcServerTranspo
 	public synchronized String receiveRequest(String request) {
 		this.request = request;
 		
-		executor.execute(this);
+		try {
+			executor.execute(this);
+		} catch(JsonRpcRemoteException e) {
+			e.printStackTrace();
+		}
+		
+		System.out.println("Response from executor: "+this.response);
 		
 		return this.response;
 	}
@@ -100,6 +108,20 @@ public class RPCTest {
 		ret = core.echo("bar");
 		
 		System.out.println("Output expected bar: "+ret);
+		
+		System.out.println("RPC Test 2");
+		
+		String[] foo = {"echo2"};
+		boolean registered = core.registerModule("RPCTest", foo);
+		
+		System.out.println("Registered: "+registered);
+		
+		RPCTestModule rpcTestModule = invoker.<RPCTestModule>get(transport, "RPCTest", RPCTestModule.class);
+		
+		String echo2 = rpcTestModule.echo2("RPCTest!");
+		
+		System.out.println("RPCTest echo2: "+echo2);
+		
 		
 		backend.stopHandling();
 		

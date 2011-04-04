@@ -22,14 +22,20 @@ class InputReader extends Thread {
 
 	protected JsonRpcBackend backend;
 	protected BufferedReader source;
+	protected boolean stop = false;
 	
 	public InputReader(JsonRpcBackend backend, BufferedReader source) {
 		this.backend = backend;
 		this.source = source;
 	}
 	
+	public synchronized void stopHandling() {
+		this.stop = true;
+		this.notify();
+	}
+	
 	public void run() {
-		while(true) {
+		while(!this.stop) {
 			String input;
 			
 			try {
@@ -50,7 +56,7 @@ public class JsonRpcBackend extends Thread {
 	
 	/*
 	 * Warning:
-	 * This code does not support JSON-RPC notifications (request ID == null).
+	 * This code does not support JSON-RPC 1.0 notifications (request ID == null).
 	 * See sendRequest().
 	 */
 	
@@ -68,6 +74,9 @@ public class JsonRpcBackend extends Thread {
 	protected Lock requestLock = new ReentrantLock();
 	protected Lock inputLock = new ReentrantLock();
 	protected Lock conditionLock = new ReentrantLock();
+	protected boolean shouldBlock = true;				// Indicates whether the main loop should block or not. 
+														// Used as buffer if the main loop does not wait but a
+														// signal from the worker condition is raised.
 	protected Condition worker = conditionLock.newCondition();
 	
 	public JsonRpcBackend(String host, int port) {
@@ -98,15 +107,24 @@ public class JsonRpcBackend extends Thread {
 	 * @return String 		Result of the call.
 	 */
 	public String sendRequest(String requestData) {
-		requestLock.lock();
 		
-
-		outgoingCalls.add(requestData);
-		System.out.println("Put request data in queue: "+requestData);
+		if(this.stop) {
+			throw new RuntimeException("Called sendRequest on stopped JsonRpcBackend");
+		}
+		
+		try {
+			requestLock.lock();
+	
+			outgoingCalls.add(requestData);
+			System.out.println("Put request data in queue: "+requestData);
+		} finally {
+			requestLock.unlock();
+		}
 		
 		// Notify worker that there's work to do.
 		try {
 			conditionLock.lock();
+			this.shouldBlock = false;
 			worker.signal();
 		} finally {
 			conditionLock.unlock();
@@ -118,8 +136,6 @@ public class JsonRpcBackend extends Thread {
 			return responses.take();
 		} catch (InterruptedException e) {
 			return null;
-		} finally {
-			requestLock.unlock();
 		}
 	}
 	
@@ -130,23 +146,32 @@ public class JsonRpcBackend extends Thread {
 	 */
 	public void socketInput(String input) {
 		System.out.println("In socketInput:" +input);
+		
+		if(input == null) {
+			// TODO handle this more specifically?
+			this.stopHandling();
+			throw new RuntimeException("Input error: input is null.");
+		}
+		
 		try {
 			inputLock.lock();
 			
-			System.out.println("Added input to rawInput queue");
 			rawInput.add(input);
-			
-			// Notify worker that there's work to do.
-			try {
-				conditionLock.lock();
-				worker.signal();
-			} finally {
-				conditionLock.unlock();
-			}
-			
+			System.out.println("Added input to rawInput queue");
 		} finally {
 			inputLock.unlock();
 		}
+			
+		// Notify worker that there's work to do.
+		try {
+			conditionLock.lock();
+			this.shouldBlock = false;
+			worker.signal();
+			System.out.println("socketInput: signaled worked");
+		} finally {
+			conditionLock.unlock();
+		}
+
 	}
 	
 	/**
@@ -156,6 +181,7 @@ public class JsonRpcBackend extends Thread {
 		this.stop = true;
 		try {
 			conditionLock.lock();
+			this.shouldBlock = false;
 			worker.signal();
 		} finally {
 			conditionLock.unlock();
@@ -175,13 +201,16 @@ public class JsonRpcBackend extends Thread {
 	 */
 	public void run() {
 		Socket skt = null;
+		InputReader inputReader = null;
 		
 		try {
 			skt = new Socket(this.host, this.port);
 			
 			PrintWriter outToServer = new PrintWriter(skt.getOutputStream(), true);
 			BufferedReader inFromServer = new BufferedReader(new InputStreamReader(skt.getInputStream()));
-			InputReader inputReader = new InputReader(this, inFromServer);
+			
+			// Initialize/Start socket reader
+			inputReader = new InputReader(this, inFromServer);
 			
 			inputReader.start();
 			
@@ -191,34 +220,44 @@ public class JsonRpcBackend extends Thread {
 				List<String> outResponses = new ArrayList<String>();
 				List<String> outCalls = new ArrayList<String>();
 
-				rawInput.drainTo(inputs);
-				
-				for(String input : inputs) {
-			        JsonParser parser = new JsonParser();
-					JsonObject resp = (JsonObject) parser.parse(new StringReader(input));
+				try {
+					inputLock.lock();
+
+					System.out.println("run: fetching inputs");
+					rawInput.drainTo(inputs);
 					
-					System.out.println("input iter: "+input);
-					
-					if(resp.get("result") != null) {
-						// Response
-						responses.add(input);
+					for(String input : inputs) {
+				        JsonParser parser = new JsonParser();
+						JsonObject resp = (JsonObject) parser.parse(new StringReader(input));
 						
-					} else if(resp.get("method") != null) {
-						// Request
-						//
-						// Process and attach the output to the outgoing queue so it
-						// can be written soon.
-						if(this.receiver != null) {
-							this.outgoingResponses.add(this.receiver.receiveRequest(input));
+						System.out.println("input iter: "+input);
+						
+						if(resp.get("result") != null || resp.get("error") != null) {
+							// Response
+							//
+							// Responses have either a result or a message field.
+							responses.add(input);
+							
+						} else if(resp.get("method") != null) {
+							// Request
+							//
+							// Process and attach the output to the outgoing queue so it
+							// can be written soon.
+							if(this.receiver != null) {
+								this.outgoingResponses.add(this.receiver.receiveRequest(input));
+							} else {
+								System.out.println("Ignoring request: '"+input+"'");
+							}
+							
 						} else {
-							System.out.println("Ignoring request: '"+input+"'");
+							System.out.println("Ignoring ill-formed: '"+input+"'");
+							continue;
 						}
 						
-					} else {
-						System.out.println("Ignoring ill-formed: '"+input+"'");
-						continue;
 					}
-					
+				
+				} finally {
+					inputLock.unlock();
 				}
 		
 				
@@ -228,18 +267,34 @@ public class JsonRpcBackend extends Thread {
 					outToServer.println(output);
 				}
 				
-				
-				outgoingCalls.drainTo(outCalls);
-				
-				for(String output : outCalls) {
-					outToServer.println(output);
+				try {
+					requestLock.lock();
+					System.out.println("Processing output calls");
+					outgoingCalls.drainTo(outCalls);
+					
+					for(String output : outCalls) {
+						outToServer.println(output);
+					}
+				} finally {
+					requestLock.unlock();
 				}
 
 				
+
 				// Wait for more work.
 				try {
 					conditionLock.lock();
-					worker.await();
+					
+					while(shouldBlock == true) { // While against spurious wakeup.
+						// We have to wait for a signal to arrive.
+						// Either from sendRequest() or from socketInput().
+						worker.await();
+					}
+					
+					// In the next round we have to block by default.
+					this.shouldBlock = true;
+					
+					System.out.println("Another round for fun and profit.");
 				} finally {
 					conditionLock.unlock();
 				}
@@ -261,6 +316,17 @@ public class JsonRpcBackend extends Thread {
 			} catch (IOException e) {
 				e.printStackTrace();
 			}
+			
+			// Wake up all threads that wait for results 
+			// in sendRequest. There won't be any.
+			// TODO revise
+			responses.add("{\"error\":{\"code\":-1,\"message\":\"Backend stopped.\"},\"id\":null}");
+			
+			if(inputReader != null) {
+				inputReader.stopHandling();
+			}
+			
+			
 		}
 	}
 	
