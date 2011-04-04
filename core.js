@@ -6,24 +6,24 @@ var pendingRequests = {};
 /*
  * registeredModules:
  * {
- *   moduleName: {
- *   	methods: [],
- *   	socket: #<socket>
- *   	version: ""
- *   },
- *   ...
+ *	moduleName: {
+ *		methods: [],
+ *		socket: #<socket>
+ *		version: ""
+ *	},
+ *	...
  * }
  *
  * registeredEvents:
  * {
- *   eventIdentifier1: {
- *   	registrants: [moduleName1, moduleName2, ...]
- *   },
- *   ...
+ *	eventIdentifier1: {
+ *		registrants: [moduleName1, moduleName2, ...]
+ *	},
+ *	...
  * }
  *
  * eventIdentifier: moduleName.eventName
- * 	example: Core.NewModule
+ * 		example: Core.NewModule
  *
  * pendingRequests:
  * {
@@ -46,7 +46,7 @@ var pendingRequests = {};
 Array.prototype.append = function(elem) {
 	this[this.length] = elem;
 	return this;
-}
+};
 
 /**
  * Signature: Array().has(needle)
@@ -56,10 +56,10 @@ Array.prototype.append = function(elem) {
  */
 Array.prototype.has = function(needle) {
 	return this.indexOf(needle) >= 0;
-}
+};
 
 /**
- * Signature: Array().valueOf(object)
+ * Signature: Array.valueOf(object)
  *
  * Converts the given object into an array by
  * copying all indices with their values to the
@@ -67,12 +67,15 @@ Array.prototype.has = function(needle) {
  *
  * Existing indices may be overriden.
  */
-Array.prototype.valueOf = function(obj) {
+Array.valueOf = function(obj) {
+	var newArray = [];
+	var x;
+
 	for(x in obj) {
-		this[x] = obj[x];
+		newArray[x] = obj[x];
 	}
-	return this;
-}
+	return newArray;
+};
 
 
 
@@ -94,7 +97,7 @@ Core.prototype = {
 	// {method:"Core.registerModule", params:[{"name":"Test", "methods":["testString","testInt"]}], id:133}
 
 	registerLocalModule: function(name, obj) {
-		methods = this.getMethods(obj);
+		var methods = this.getMethods(obj);
 		registeredModules[name] = new LocalModule(name, methods, obj);
 		return true;
 	},
@@ -111,10 +114,11 @@ Core.prototype = {
 
 	// Return an array of method names of obj which don't start with an underscore (_).
 	getMethods: function(obj) {
-		methods = new Array;
+		var methods = [];
+		var attr;
 
 		for(attr in obj) {
-			if(attr[0] != "_" && typeof obj[attr] == "function") {
+			if(attr[0] !== "_" && typeof obj[attr] === "function") {
 				methods.append(attr);
 			}
 		}
@@ -124,7 +128,7 @@ Core.prototype = {
 
 
 	callRpcMethod: function(socket, method, params, responseHandler) {
-		id = this.generateRequestId();
+		var id = this.generateRequestId();
 
 		pendingRequests[id] = responseHandler;
 
@@ -133,22 +137,33 @@ Core.prototype = {
 		return id;
 	},
 
+	json_errors: {
+		parse_error: 		-32700, 	// Parse error 			Invalid JSON was received by the server.
+		invalid_request: 	-32600, 	// Invalid Request 		The JSON sent is not a valid Request object.
+		method_not_found: 	-32601, 	// Method not found 	The method does not exist / is not available.
+		invalid_params: 	-32602, 	// Invalid params 		Invalid method parameter(s).
+		internal_error: 	-32603  	// Internal error 		Internal JSON-RPC error.
+	},
+
 	// JSON RPC helper
 	// TODO move those helpers into a json-rpc module
 	createJsonRpcResponse: function (id, result) {
-		response = {
+		var response = {
+			jsonrpc: "2.0",
 			result: result,
-			id: id,
-			error: null
+			id: id
 		};
 		return JSON.stringify(response) + "\r\n";
 	},
 
-	createJsonRpcError: function (id, msg) {
-		error = {
-			result: null,
+	createJsonRpcError: function (id, msg, errorCode) {
+		var error = {
+			jsonrpc: "2.0",
 			id: id,
-			error: msg,
+			error: {
+				code: errorCode,
+				message: msg
+			}
 		};
 		return JSON.stringify(error) + "\r\n";
 	},
@@ -159,7 +174,8 @@ Core.prototype = {
 			id = this.generateRequestId();
 		}
 
-		request = {
+		var request = {
+			jsonrpc: "2.0",
 			method: method,
 			id: id,
 			params: params
@@ -169,16 +185,15 @@ Core.prototype = {
 
 	generateRequestId: function () {
 		for(;;) {
-			id = Math.floor(Math.random()*Math.pow(2,32));
+			var id = Math.floor(Math.random()*Math.pow(2,32));
 			if(pendingRequests[id]) {
 				continue;
 			}
 			return id;
 		}
-	},
+	}
 
-
-}
+};
 
 
 /**
@@ -194,8 +209,12 @@ var CoreModule = {
 	},
 
 	registerModule: function(name, methods) {
-		success = this.core.registerRpcModule(name, methods, this.socket);
+		var success = this.core.registerRpcModule(name, methods, this.socket);
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, success));
+	},
+
+	fireEvent: function(name, data) {
+		// TODO
 	}
 };
 
@@ -209,25 +228,25 @@ var CoreModule = {
  *
  * You can retrieve a registered module by calling
  *
- *   Module(name)
+ *	Module(name)
  *
  * For example:
  *
- *   Module("Peers")
+ *	Module("Peers")
  *
  * If the module is not found, null is returned.
  *
  * New modules can be created by using more than one
  * parameter. For example a LocalModule:
  *
- *   new LocalModule("Core", ["registerModule"], CoreModule);
+ *	new LocalModule("Core", ["registerModule"], CoreModule);
  *
  */
 var Module = function(name, methods) {
 	if(arguments.length == 1) {
 		// Find an existing module if only name is given
 
-		moduleData = registeredModules[name]
+		var moduleData = registeredModules[name];
 
 		if(moduleData === undefined) {
 			return null;
@@ -261,6 +280,7 @@ var LocalModule = function(name, methods, obj) {
 LocalModule.prototype = {
 	getMethod: function(name) {
 		if(this.methods.has(name)) {
+			// TODO check for evilness
 			return eval("this.obj."+name);
 		}
 		return null;
@@ -291,13 +311,13 @@ RpcModule.prototype = {
 	 *
 	 * Example:
 	 * IN: {"method":"Peers.get","id":123,"params":[]}
-	 *   Peers is retrieved and Module("Peers").getMethod("get") (this method)
-	 *   is called. We call "get" on "Peers".
-	 * OUT: {"method":"get","id":3494277933,"params":[]}
-	 *   Peers processes our request and sends a response.
+	 *	Peers is retrieved and Module("Peers").getMethod("get") (this method)
+	 *	is called. We call "get" on "Peers".
+	 * OUT: {"method":"Peers.get","id":3494277933,"params":[]}
+	 *	Peers processes our request and sends a response.
 	 * IN: {"result":"getet","error":null,"id":3494277933}
-	 *   We can now notify the sender of the inital request that a result
-	 *   returned.
+	 *	We can now notify the sender of the inital request that a result
+	 *	returned.
 	 * OUT: {"result":"getet","id":123,"error":null}
 	 *
 	 * @return function 	Proxy method for handling the request.
@@ -309,11 +329,12 @@ RpcModule.prototype = {
 				// Proxy method
 				console.log("Proxycall to",name);
 
+				var moduleName = this.name;
 				var requestId = this.requestId;
 				var requestSocket = this.socket;
 				var core = this.core;
 
-				this.core.callRpcMethod(module.socket, name, Array().valueOf(arguments), function(response) {
+				this.core.callRpcMethod(module.socket, moduleName+"."+name, Array.valueOf(arguments), function(response) {
 					console.log("Response received: ",response);
 
 					requestSocket.write(core.createJsonRpcResponse(requestId, response));
@@ -333,27 +354,26 @@ RpcModule.prototype = {
  * JSON request or response and handles it.
  *
  * Requests:
- *   Requests are parsed, the corresponding module is
- *   received and the method on the module is called.
- *   Passed informations to the called method are:
- *   - this.requestId
- *   - this.socket
- *   - this.core
- *   The called function receives the parameters passed
- *   by the request.
+ *	Requests are parsed, the corresponding module is
+ *	received and the method on the module is called.
+ *	Passed informations to the called method are:
+ *	- this.requestId
+ *	- this.socket
+ *	- this.core
+ *	The called function receives the parameters passed
+ *	by the request.
  *
  * Responses:
- *   A matching handler for the response id is found.
- *   The handler is called with the following
- *   informations passed:
- *   - this.responseId
- *   - this.socket
- *   - this.core
- *   The called function receives one parameter:
- *   - The repsonse result
+ *	A matching handler for the response id is found.
+ *	The handler is called with the following
+ *	informations passed:
+ *	- this.responseId
+ *	- this.socket
+ *	- this.core
+ *	The called function receives one parameter:
+ *	- The repsonse result
  */
 var Dispatcher = function(message, socket, core) {
-
 
 	this.core = core;
 
@@ -365,7 +385,7 @@ var Dispatcher = function(message, socket, core) {
 	} else if(this.validateResponse(message)) {
 		this.routeResponse(message);
 	} else {
-		console.log("Invalid JSON-RPC 1.0 Data");
+		console.log("Invalid JSON-RPC 2.0 Data:", message);
 		return false;
 	}
 
@@ -376,44 +396,49 @@ Dispatcher.prototype = {
 
 	validateRequest: function(req) {
 		return typeof req.method !== 'undefined' &&
-			   typeof req.params !== 'undefined' &&
-			   typeof req.id !== 'undefined';
+				typeof req.params !== 'undefined' &&
+				typeof req.id !== 'undefined';
 	},
 
 
 	validateResponse: function(resp) {
-		return typeof resp.result !== 'undefined' &&
-			   typeof resp.error !== 'undefined' &&
-			   typeof resp.id !== 'undefined';
+		return (typeof resp.result !== 'undefined' ||
+				typeof resp.error !== 'undefined') &&
+				typeof resp.id !== 'undefined' &&
+				typeof resp.jsonrpc !== 'undefined';
 	},
 
 
 
 	routeRequest: function(request) {
 
-		match = request.method.match(/^(.+)\.(.+)/);
+		var match = request.method.match(/^(.+)\.(.+)/);
 
 		if(match === null) {
-			this.socket.write(this.createJsonRpcError(request.id, "Ill-formed request."))
+			console.log("Ill-formed request:",request);
+			this.socket.write(this.createJsonRpcError(
+				request.id, "Ill-formed request.", this.json_errors.internal_error));
 			return;
 		}
 
-		moduleName = match[1];
-		methodName = match[2];
+		var moduleName = match[1];
+		var methodName = match[2];
 
-		module = Module(moduleName);
+		var module = Module(moduleName);
 
 		if(module === null) {
 			console.log("Unknown module in RPC request.");
-			this.socket.write(this.core.createJsonRpcError(request.id, "Unknown module "+moduleName));
+			this.socket.write(this.core.createJsonRpcError(
+				request.id, "Unknown module "+moduleName, this.json_errors.method_not_found));
 			return;
 		}
 
-		method = module.getMethod(methodName);
+		var method = module.getMethod(methodName);
 
 		if(typeof method !== 'function') {
-			console.log("Unknown method in RPC request.");
-			this.socket.write(this.core.createJsonRpcError(request.id, "Unknown method "+methodName));
+			console.log("Unknown method in RPC request:",methodName);
+			this.socket.write(this.core.createJsonRpcError(
+				request.id, "Unknown method "+methodName, this.json_errors.method_not_found));
 			return;
 		}
 
@@ -421,7 +446,7 @@ Dispatcher.prototype = {
 	},
 
 	routeResponse: function(response) {
-		handler = pendingRequests[response.id];
+		var handler = pendingRequests[response.id];
 
 		if(handler === undefined) {
 			console.log("No handler for response",response.id);
@@ -443,18 +468,28 @@ var core = new Core(function() {
 
 	this.registerLocalModule("Core", CoreModule);
 
-	core = this;
+	var core = this;
 
 	// Setup RPC server
 	this.server = net.createServer(function (socket) {
 
 		socket.on('data', function(data) {
+
+			socket.write = function(that, write) {
+
+				return function() {
+					var args = Array.valueOf(arguments);
+					args[args.length] = function() { console.log(args); };
+					write.apply(that, args);
+				}
+			}(socket, socket.write);
+
 			var message = null;
 			try {
-				var message = JSON.parse(data);
+				message = JSON.parse(data);
 			} catch(e) {
 				console.log("Could not parse incoming JSON data:",data.toString(),"Reason:", e);
-				// TODO send error event response
+				socket.write(core.createJsonRpcError(null, "Ill-formed request.", core.json_errors.parse_error));
 				return
 			}
 
