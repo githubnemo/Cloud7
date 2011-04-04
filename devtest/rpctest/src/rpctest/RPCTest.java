@@ -92,16 +92,16 @@ public class RPCTest {
 		
 		// Call core.echo
 		String ret = core.echo("foo");
-		System.out.println(ret);
+		System.out.println("Output expected foo: "+ret);
 		
 		
 		System.out.println("Sending 2. echo:");
 		
 		ret = core.echo("bar");
 		
-		System.out.println(ret);
+		System.out.println("Output expected bar: "+ret);
 		
-
+		backend.stopHandling();
 		
 		/*
 		TcpJsonRpcClientTransport transport = new TcpJsonRpcClientTransport("127.0.0.1", 8124);

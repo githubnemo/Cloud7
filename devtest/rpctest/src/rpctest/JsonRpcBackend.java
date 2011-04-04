@@ -7,6 +7,8 @@ import java.io.PrintWriter;
 import java.io.StringReader;
 import java.net.Socket;
 import java.net.UnknownHostException;
+import java.util.ArrayList;
+import java.util.List;
 import java.util.concurrent.BlockingQueue;
 import java.util.concurrent.LinkedBlockingQueue;
 import java.util.concurrent.locks.Condition;
@@ -52,6 +54,8 @@ public class JsonRpcBackend extends Thread {
 	 * See sendRequest().
 	 */
 	
+	protected boolean stop = false;
+	
 	protected String host;
 	protected Integer port;
 	protected JsonRpcRequestReceiver receiver;
@@ -62,6 +66,7 @@ public class JsonRpcBackend extends Thread {
 	protected BlockingQueue<String> outgoingCalls;		// output, calls to be written to socket
 
 	protected Lock requestLock = new ReentrantLock();
+	protected Lock inputLock = new ReentrantLock();
 	protected Lock conditionLock = new ReentrantLock();
 	protected Condition worker = conditionLock.newCondition();
 	
@@ -75,14 +80,29 @@ public class JsonRpcBackend extends Thread {
 		outgoingCalls = new LinkedBlockingQueue<String>();
 	}
 	
+	/**
+	 * Sets the object responsible for handling incoming RPC requests.
+	 * 
+	 * @param receiver
+	 */
 	public synchronized void setRequestReceiver(JsonRpcRequestReceiver receiver) {
 		this.receiver = receiver;
 	}
 	
+	/**
+	 * Send a RPC request to the other end of the connection.
+	 * 
+	 * Waits for result synchronously.
+	 * 
+	 * @param requestData	The RPC request to make.
+	 * @return String 		Result of the call.
+	 */
 	public String sendRequest(String requestData) {
 		requestLock.lock();
 		
+
 		outgoingCalls.add(requestData);
+		System.out.println("Put request data in queue: "+requestData);
 		
 		// Notify worker that there's work to do.
 		try {
@@ -91,6 +111,8 @@ public class JsonRpcBackend extends Thread {
 		} finally {
 			conditionLock.unlock();
 		}
+		
+		System.out.println("request notification done.");
 		
 		try {
 			return responses.take();
@@ -101,10 +123,15 @@ public class JsonRpcBackend extends Thread {
 		}
 	}
 	
-	// Called from InputReader.
+	/**
+	 * Incoming data is feed here.
+	 * 
+	 * @param input		Data incoming from the other end.
+	 */
 	public void socketInput(String input) {
+		System.out.println("In socketInput:" +input);
 		try {
-			requestLock.lock();
+			inputLock.lock();
 			
 			System.out.println("Added input to rawInput queue");
 			rawInput.add(input);
@@ -118,10 +145,34 @@ public class JsonRpcBackend extends Thread {
 			}
 			
 		} finally {
-			requestLock.unlock();
+			inputLock.unlock();
 		}
 	}
 	
+	/**
+	 * Stops the backend handler from working.
+	 */
+	public void stopHandling() {
+		this.stop = true;
+		try {
+			conditionLock.lock();
+			worker.signal();
+		} finally {
+			conditionLock.unlock();
+		}
+	}
+	
+	/**
+	 * Iterate over the input strings and handle them
+	 * - responses: Add to response queue
+	 * - requests: Hand over to request receiver (this.receiver) and wait for output
+	 * 
+	 * Iterate over the output strings and handle them
+	 * - print both to socket
+	 * 
+	 * If new data is received or a new request was made, this
+	 * thread is waked up.
+	 */
 	public void run() {
 		Socket skt = null;
 		
@@ -134,9 +185,15 @@ public class JsonRpcBackend extends Thread {
 			
 			inputReader.start();
 			
-			while(true) {
+			while(!this.stop) {
 				
-				for(String input : rawInput) {
+				List<String> inputs = new ArrayList<String>();
+				List<String> outResponses = new ArrayList<String>();
+				List<String> outCalls = new ArrayList<String>();
+
+				rawInput.drainTo(inputs);
+				
+				for(String input : inputs) {
 			        JsonParser parser = new JsonParser();
 					JsonObject resp = (JsonObject) parser.parse(new StringReader(input));
 					
@@ -164,11 +221,17 @@ public class JsonRpcBackend extends Thread {
 					
 				}
 		
-				for(String output : outgoingResponses) {
+				
+				outgoingResponses.drainTo(outResponses);
+				
+				for(String output : outResponses) {
 					outToServer.println(output);
 				}
 				
-				for(String output : outgoingCalls) {
+				
+				outgoingCalls.drainTo(outCalls);
+				
+				for(String output : outCalls) {
 					outToServer.println(output);
 				}
 
