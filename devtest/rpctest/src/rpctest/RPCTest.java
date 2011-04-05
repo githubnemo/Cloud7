@@ -1,7 +1,10 @@
 package rpctest;
 
+import java.util.Arrays;
+
 import org.json.rpc.client.JsonRpcInvoker;
 import org.json.rpc.commons.JsonRpcRemoteException;
+import org.json.rpc.commons.RpcIntroSpection;
 import org.json.rpc.server.JsonRpcExecutor;
 import org.json.rpc.server.JsonRpcServerTransport;
 
@@ -18,18 +21,9 @@ interface Core {
 	boolean registerModule(String name, String[] methods);
 }
 
-interface RPCTestModule {
-	String echo2(String input);
-}
 
-class RPCTestModuleImpl implements RPCTestModule {
 
-	@Override
-	public String echo2(String input) {
-		return input+"2";
-	}
-	
-}
+
 
 class RequestReceiver<E> implements JsonRpcRequestReceiver, JsonRpcServerTransport {
 
@@ -37,10 +31,9 @@ class RequestReceiver<E> implements JsonRpcRequestReceiver, JsonRpcServerTranspo
 	protected String response;
 	protected JsonRpcExecutor executor;
 	
-	public RequestReceiver(String exportName, E toExport, Class<E>... classes) {
-		this.executor = new JsonRpcExecutor();
-		
-		executor.addHandler(exportName, toExport, classes);
+	public RequestReceiver(JsonRpcExecutor executor) {
+		this.executor = executor;
+
 	}
 	
 	@Override
@@ -77,11 +70,17 @@ public class RPCTest {
 	 */
 	public static void main(String[] args) {
 
-		RPCTestModule toExport = new RPCTestModuleImpl();
-		
+
 		JsonRpcBackend backend = new JsonRpcBackend("127.0.0.1", 8124);
 		
-		backend.setRequestReceiver(new RequestReceiver<RPCTestModule>("RPCTest", toExport, RPCTestModule.class));
+		
+		RPCTestModule toExport = new RPCTestModuleImpl();
+		JsonRpcExecutor executor = new JsonRpcExecutor(); 
+		executor.<RPCTestModule>addHandler("RPCTest", toExport, RPCTestModule.class);
+		
+		RequestReceiver r = new RequestReceiver(executor);
+		
+		backend.setRequestReceiver(r);
 		
 		
 		backend.start();
@@ -109,9 +108,12 @@ public class RPCTest {
 		
 		System.out.println("Output expected bar: "+ret);
 		
+		
+		
+		
 		System.out.println("RPC Test 2");
 		
-		String[] foo = {"echo2"};
+		String[] foo = {"echo2"}; // use RpcIntroSpection on executor
 		boolean registered = core.registerModule("RPCTest", foo);
 		
 		System.out.println("Registered: "+registered);
@@ -121,6 +123,15 @@ public class RPCTest {
 		String echo2 = rpcTestModule.echo2("RPCTest!");
 		
 		System.out.println("RPCTest echo2: "+echo2);
+		
+		
+		
+		System.out.println("Sending 3. echo:");
+		
+		ret = core.echo("baz");
+		
+		System.out.println("Output expected baz: "+ret);
+		
 		
 		
 		backend.stopHandling();

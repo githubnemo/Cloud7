@@ -15,11 +15,24 @@ import java.util.concurrent.locks.Condition;
 import java.util.concurrent.locks.Lock;
 import java.util.concurrent.locks.ReentrantLock;
 
+import org.json.rpc.commons.JsonRpcRemoteException;
+
 import com.google.gson.JsonObject;
 import com.google.gson.JsonParser;
 
+
 class InputReader extends Thread {
 
+	/**
+	 * Read lines from a given BufferedReader (source)
+	 * and supply them to the given JsonRpcBackend (backend).
+	 * 
+	 * If an error occurs, the thread is terminated.
+	 * 
+	 * If null input is received, the input is handed to the
+	 * backend and the thread is terminated.
+	 */
+	
 	protected JsonRpcBackend backend;
 	protected BufferedReader source;
 	protected boolean stop = false;
@@ -47,12 +60,23 @@ class InputReader extends Thread {
 			System.out.println("Read: "+input);
 			
 			backend.socketInput(input);
+			
+			if(input == null) {
+				return;
+			}
 		}
 	}
 	
 }
 
 public class JsonRpcBackend extends Thread {
+	
+	/**
+	 * JSON RPC back-end.
+	 * 
+	 * Sends requests from local side and waits for responses.
+	 * Handles requests from remote side and sends responses.
+	 */
 	
 	/*
 	 * Warning:
@@ -61,6 +85,7 @@ public class JsonRpcBackend extends Thread {
 	 */
 	
 	protected boolean stop = false;
+	protected String error = "";
 	
 	protected String host;
 	protected Integer port;
@@ -70,6 +95,7 @@ public class JsonRpcBackend extends Thread {
 	protected BlockingQueue<String> responses;			// input, processed by sendRequest
 	protected BlockingQueue<String> outgoingResponses; 	// output, responses returned by this.receiver
 	protected BlockingQueue<String> outgoingCalls;		// output, calls to be written to socket
+	
 
 	protected Lock requestLock = new ReentrantLock();
 	protected Lock inputLock = new ReentrantLock();
@@ -103,15 +129,27 @@ public class JsonRpcBackend extends Thread {
 	 * 
 	 * Waits for result synchronously.
 	 * 
-	 * @param requestData	The RPC request to make.
-	 * @return String 		Result of the call.
+	 * Throws an exception if the back-end is not active anymore.
+	 * 
+	 * @param requestData				The RPC request to make.
+	 * @return String 					Result of the call.
+	 * @throws JsonRpcRemoteException	If the back-end is not running anymore. 
 	 */
 	public String sendRequest(String requestData) {
 		
+		// Check if the back-end is running, if not throw an Exception.
+		// This is clearly an error.
 		if(this.stop) {
-			throw new RuntimeException("Called sendRequest on stopped JsonRpcBackend");
+			String message = getError();
+			
+			if(message.length() == 0) {
+				message = "Called sendRequest on stopped JsonRpcBackend";
+			}
+			
+			throw new JsonRpcRemoteException(message);
 		}
 		
+		// Place the request in the outgoing queue
 		try {
 			requestLock.lock();
 	
@@ -132,6 +170,7 @@ public class JsonRpcBackend extends Thread {
 		
 		System.out.println("request notification done.");
 		
+		// Wait for result
 		try {
 			return responses.take();
 		} catch (InterruptedException e) {
@@ -141,20 +180,21 @@ public class JsonRpcBackend extends Thread {
 	
 	/**
 	 * Incoming data is feed here.
+	 * The data comes from a separate thread.
 	 * 
 	 * @param input		Data incoming from the other end.
 	 */
 	public void socketInput(String input) {
 		System.out.println("In socketInput:" +input);
 		
-		if(input == null) {
-			// TODO handle this more specifically?
-			this.stopHandling();
-			throw new RuntimeException("Input error: input is null.");
-		}
-		
 		try {
 			inputLock.lock();
+			
+			if(input == null) {
+				setError("Socket input was null.");
+				this.stopHandling();
+				return;
+			}
 			
 			rawInput.add(input);
 			System.out.println("Added input to rawInput queue");
@@ -175,7 +215,7 @@ public class JsonRpcBackend extends Thread {
 	}
 	
 	/**
-	 * Stops the backend handler from working.
+	 * Stops the back-end handler from working.
 	 */
 	public void stopHandling() {
 		this.stop = true;
@@ -187,6 +227,20 @@ public class JsonRpcBackend extends Thread {
 			conditionLock.unlock();
 		}
 	}
+	
+	/**
+	 * If an fatal error occurred while processing, one can get it here.
+	 * @return String	Error which occurred.
+	 */
+	public String getError() {
+		return error;
+	}
+	
+	
+	protected void setError(String error) {
+		this.error = error;
+	}
+	
 	
 	/**
 	 * Iterate over the input strings and handle them
@@ -250,8 +304,13 @@ public class JsonRpcBackend extends Thread {
 							}
 							
 						} else {
-							System.out.println("Ignoring ill-formed: '"+input+"'");
-							continue;
+							System.out.println("Received ill-formed: '"+input+"'");
+							
+							// Can't decide if it's a bad request coming in or a broken response for
+							// a request. This is clearly a fucked up situation. Stop processing
+							// and set failed state.
+							setError("Ill-formed message received: "+input);
+							stopHandling();
 						}
 						
 					}
@@ -319,8 +378,23 @@ public class JsonRpcBackend extends Thread {
 			
 			// Wake up all threads that wait for results 
 			// in sendRequest. There won't be any.
-			// TODO revise
-			responses.add("{\"error\":{\"code\":-1,\"message\":\"Backend stopped.\"},\"id\":null}");
+			// TODO revise, encoding of message etc.
+			String errorMessage = getError();
+			
+			if(errorMessage.length() == 0) {
+				errorMessage = "Backend stopped. No reason given.";
+			}
+			
+	        JsonObject errorResponse = new JsonObject();
+	        
+	        JsonObject errorObject = new JsonObject();
+	        errorObject.addProperty("code",-1);
+	        errorObject.addProperty("message", errorMessage);
+	        
+	        errorResponse.add("id", null);
+	        errorResponse.add("error", errorObject);
+	        
+			responses.add(errorResponse.toString());
 			
 			if(inputReader != null) {
 				inputReader.stopHandling();
