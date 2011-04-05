@@ -127,6 +127,15 @@ Core.prototype = {
 	},
 
 
+	/**
+	 * Signature: callRpcMethod(socket, method, params, responseHandler)
+	 *
+	 * responseHandler signature: func(response, error)
+	 *
+	 * The response handler's argument response can be undefined if an
+	 * error occured. In this case, error is !== undefined. If no error
+	 * occured, error is undefined.
+	 */
 	callRpcMethod: function(socket, method, params, responseHandler) {
 		var id = this.generateRequestId();
 
@@ -329,15 +338,19 @@ RpcModule.prototype = {
 				// Proxy method
 				console.log("Proxycall to",name);
 
-				var moduleName = this.name;
+				var moduleName = module.name;
 				var requestId = this.requestId;
 				var requestSocket = this.socket;
 				var core = this.core;
 
-				this.core.callRpcMethod(module.socket, moduleName+"."+name, Array.valueOf(arguments), function(response) {
-					console.log("Response received: ",response);
+				this.core.callRpcMethod(module.socket, moduleName+"."+name, Array.valueOf(arguments), function(response, error) {
+					console.log("Response received: ", response, "Error:", error);
 
-					requestSocket.write(core.createJsonRpcResponse(requestId, response));
+					if(typeof error !== "undefined") {
+						requestSocket.write(core.createJsonRpcError(requestId, error, core.json_errors.internal_error));
+					} else {
+						requestSocket.write(core.createJsonRpcResponse(requestId, response));
+					}
 				});
 			};
 		}
@@ -453,7 +466,7 @@ Dispatcher.prototype = {
 			return;
 		}
 
-		handler.apply({socket: this.socket, responseId: response.id, core: this.core}, [ response.result ]);
+		handler.apply({socket: this.socket, responseId: response.id, core: this.core}, [ response.result, response.error ]);
 	}
 
 };
@@ -476,13 +489,13 @@ var core = new Core(function() {
 		socket.on('data', function(data) {
 
 			socket.write = function(that, write) {
-
 				return function() {
 					var args = Array.valueOf(arguments);
-					args[args.length] = function() { console.log(args); };
+					args[args.length] = function() { console.log("OUT:",args); };
 					write.apply(that, args);
 				}
 			}(socket, socket.write);
+			console.log("IN:",data.toString());
 
 			var message = null;
 			try {
