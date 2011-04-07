@@ -33,6 +33,23 @@ var pendingRequests = {};
  */
 
 
+/*
+ * TODO implement this
+ *
+ * Event workflow:
+ *
+ * Peers: {"method":"Core.fireEvent", "params":["Peers.joinedNetwork", ["HAW"]], id:123}
+ * Core: {"result":true, "id":123}
+ *
+ * To everyone who's registered to "Peers.joinedNetwork" (GUI and Test for example):
+ * Core: {"method":"Peers.joinedNetwork", "params":["HAW"], "id":id}
+ * GUI: {"result":true, "id":id}
+ *
+ * Core: {"method":"Peers.joinedNetwork", "params":["HAW"], "id":id+1}
+ * Test: {"result":true, "id":id+1}
+ */
+
+
 
 /**
  * Array utilities.
