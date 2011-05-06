@@ -1,6 +1,13 @@
+/**
+ * Cloud7 core.
+ *
+ * Route RPC signals, handle modules, handle events.
+ */
+
 
 var registeredModules = {};
 var registeredEvents = {};
+var eventIdToEvent = [];
 var pendingRequests = {};
 
 /*
@@ -16,14 +23,21 @@ var pendingRequests = {};
  *
  * registeredEvents:
  * {
- *	eventIdentifier1: {
- *		registrants: [moduleName1, moduleName2, ...]
- *	},
+ *	eventIdentifier1: [eventId1, eventId2, ...],
  *	...
  * }
  *
+ * eventIdToEvent: {
+ * 	id1: [eventIdentifier1,moduleName1,methodName1],
+ * 	id2: [eventIdentifier2,moduleName2,methodName2],
+ * 	...
+ * }
+ *
  * eventIdentifier: moduleName.eventName
- * 		example: Core.NewModule
+ * 		example: Core.newModule OR Peers.joinedNetwork
+ *
+ * 	callbackIdentifier: moduleName.callbackName
+ * 		example: GUI.handleJoinedNetwork
  *
  * pendingRequests:
  * {
@@ -32,22 +46,33 @@ var pendingRequests = {};
  * }
  */
 
-
-/*
- * TODO implement this
+/**
+ * Signature: addNewEvent(id, module, method)
  *
- * Event workflow:
+ * id: event identifier (String)
+ * module: module identifier (String)
+ * method: method identifier (String)
  *
- * Peers: {"method":"Core.fireEvent", "params":["Peers.joinedNetwork", ["HAW"]], id:123}
- * Core: {"result":true, "id":123}
- *
- * To everyone who's registered to "Peers.joinedNetwork" (GUI and Test for example):
- * Core: {"method":"Peers.joinedNetwork", "params":["HAW"], "id":id}
- * GUI: {"result":true, "id":id}
- *
- * Core: {"method":"Peers.joinedNetwork", "params":["HAW"], "id":id+1}
- * Test: {"result":true, "id":id+1}
+ * @return int	Index of the freshly registered event listener
  */
+eventIdToEvent.addNewEvent = function(id, module, method) {
+	var add = function(idx,id,module,method) {
+		eventIdToEvent[idx] = [id, module, method];
+		return idx;
+	};
+
+	// Find free slot
+	for(var i=0; i < eventIdToEvent.length; i++) {
+		if(eventIdToEvent[i] === undefined) {
+			return add(i, id, module, method);
+		}
+	}
+
+	// No free slot, append
+	return add(eventIdToEvent.length - 1, id, module, method);
+}
+
+
 
 
 
@@ -239,9 +264,95 @@ var CoreModule = {
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, success));
 	},
 
+	/*
+	 * Signature: fireEvent(name, data) => Boolean
+	 *
+	 * name: String
+	 * data: Array
+	 *
+	 * How it works:
+	 *
+	 * Peers: {"method":"Core.fireEvent", "params":["Peers.joinedNetwork", ["HAW"]], id:123}
+	 * Core: {"result":true, "id":123}
+	 *
+	 * To everyone who's registered to "Peers.joinedNetwork" (GUI and Test for example):
+	 * Core: {"method":"Peers.joinedNetwork", "params":["HAW"], "id":id}
+	 * GUI: {"result":true, "id":id}
+	 *
+	 * Core: {"method":"Peers.joinedNetwork", "params":["HAW"], "id":id+1}
+	 * Test: {"result":true, "id":id+1}
+	 */
 	fireEvent: function(name, data) {
-		// TODO
+		var listeners = registeredEvents[name];
+
+		for(var i=0; i < listeners.length; i++) {
+			var row = eventIdToEvent[listeners[i]];
+
+			var module = registeredModules[row[1]]
+			var method = module.getMethod(row[2])
+
+			if(typeof method !== 'function') {
+				console.log("Can't fire event "+name+" to "+module+": No method.");
+				return;
+			}
+
+			method.apply({socket: this.socket, requestId: this.generateRequestId(), core: this.core}, data);
+		}
+	},
+
+	/*
+	 * Signature: bindToEvent(identifier, callbackIdentifier) => Int
+	 *
+	 * identifier: String
+	 * callbackIdentifier: String
+	 *
+	 * Error response if the module in the callbackIdentifier is not loaded
+	 * or the callbackIdentifier is ill-formed.
+	 */
+	bindToEvent: function(identifier, callbackIdentifier) {
+		var composite = callbackIdentifier.split('.');
+
+		if( composite.length != 2 ) {
+			this.socket.write(this.core.createJsonRpcError(
+				this.requestId,
+				"Ill-formed callback identifier: "+callbackIdentifier+".",
+				this.json_errors.internal_error));
+			return;
+		}
+
+		var module = composite[0];
+		var method = composite[1];
+
+		if( !registeredModules[module] ) {
+			this.socket.write(this.core.createJsonRpcError(
+				this.requestId,
+				"Receiving module "+module+" is not registered.",
+				this.json_errors.internal_error));
+			return;
+		}
+
+		var eventId = eventIdToEvent.addNewEvent(identifier, module, method);
+
+		// Save the events by identifier for easy lookup
+		if( registeredEvents[identifier] === undefined) {
+			registeredEvents[identifier] = Array();
+		}
+
+		registeredEvents[identifier].append(eventId);
+
+		this.socket.write(this.core.createJsonRpcResponse(this.requestId, eventId));
+	},
+
+	unbindFromEvent: function(eventId) {
+
+		// TODO check calling module (it shall own the event to unbind it)
+
+		delete eventIdToEvent[eventId];
+
+		// TODO return value
 	}
+
+
 };
 
 
