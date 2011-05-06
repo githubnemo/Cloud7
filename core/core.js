@@ -123,7 +123,7 @@ Array.valueOf = function(obj) {
 
 
 
-var net = require('net');
+
 
 /**
  * Signature: Core(init)
@@ -188,6 +188,20 @@ Core.prototype = {
 		return id;
 	},
 
+	generateRequestId: function () {
+		for(;;) {
+			var id = Math.floor(Math.random()*Math.pow(2,32));
+			if(pendingRequests[id]) {
+				continue;
+			}
+			return id;
+		}
+	},
+
+	/*
+	 * JSON definitions / methods
+	 */
+
 	json_errors: {
 		parse_error: 		-32700, 	// Parse error 			Invalid JSON was received by the server.
 		invalid_request: 	-32600, 	// Invalid Request 		The JSON sent is not a valid Request object.
@@ -233,16 +247,6 @@ Core.prototype = {
 		};
 		return JSON.stringify(request) + "\r\n";
 	},
-
-	generateRequestId: function () {
-		for(;;) {
-			var id = Math.floor(Math.random()*Math.pow(2,32));
-			if(pendingRequests[id]) {
-				continue;
-			}
-			return id;
-		}
-	}
 
 };
 
@@ -606,6 +610,8 @@ Dispatcher.prototype = {
  * Register essential local modules and setup the RPC server.
  */
 var core = new Core(function() {
+
+	var net = require('net');
 
 	this.registerLocalModule("Core", CoreModule);
 
