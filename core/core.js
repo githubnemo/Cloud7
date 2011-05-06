@@ -446,8 +446,8 @@ Dispatcher.prototype = {
 
 		if(match === null) {
 			console.log("Ill-formed request:",request);
-			this.socket.write(this.createJsonRpcError(
-				request.id, "Ill-formed request.", this.json_errors.internal_error));
+			this.socket.write(this.core.createJsonRpcError(
+				request.id, "Ill-formed request.", this.core.json_errors.internal_error));
 			return;
 		}
 
@@ -459,7 +459,7 @@ Dispatcher.prototype = {
 		if(module === null) {
 			console.log("Unknown module in RPC request.");
 			this.socket.write(this.core.createJsonRpcError(
-				request.id, "Unknown module "+moduleName, this.json_errors.method_not_found));
+				request.id, "Unknown module "+moduleName, this.core.json_errors.method_not_found));
 			return;
 		}
 
@@ -468,7 +468,7 @@ Dispatcher.prototype = {
 		if(typeof method !== 'function') {
 			console.log("Unknown method in RPC request:",methodName);
 			this.socket.write(this.core.createJsonRpcError(
-				request.id, "Unknown method "+methodName, this.json_errors.method_not_found));
+				request.id, "Unknown method "+methodName, this.core.json_errors.method_not_found));
 			return;
 		}
 
@@ -505,6 +505,7 @@ var core = new Core(function() {
 
 		socket.on('data', function(data) {
 
+			// Overwrite write for debugging/logging purposes.
 			socket.write = function(that, write) {
 				return function() {
 					var args = Array.valueOf(arguments);
@@ -512,6 +513,7 @@ var core = new Core(function() {
 					write.apply(that, args);
 				}
 			}(socket, socket.write);
+
 			console.log("IN:",data.toString());
 
 			var message = null;
