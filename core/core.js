@@ -320,7 +320,7 @@ var CoreModule = {
 			this.socket.write(this.core.createJsonRpcError(
 				this.requestId,
 				"Ill-formed callback identifier: "+callbackIdentifier+".",
-				this.json_errors.internal_error));
+				this.core.json_errors.internal_error));
 			return;
 		}
 
@@ -331,7 +331,7 @@ var CoreModule = {
 			this.socket.write(this.core.createJsonRpcError(
 				this.requestId,
 				"Receiving module "+module+" is not registered.",
-				this.json_errors.internal_error));
+				this.core.json_errors.internal_error));
 			return;
 		}
 
