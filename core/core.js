@@ -49,9 +49,9 @@ var pendingRequests = {};
 /**
  * Signature: addNewEvent(id, module, method)
  *
- * id: event identifier (String)
- * module: module identifier (String)
- * method: method identifier (String)
+ * id:		event identifier (String)
+ * module:	module identifier (String)
+ * method:	method identifier (String)
  *
  * @return int	Index of the freshly registered event listener
  */
@@ -69,7 +69,7 @@ eventIdToEvent.addNewEvent = function(id, module, method) {
 	}
 
 	// No free slot, append
-	return add(eventIdToEvent.length - 1, id, module, method);
+	return add(eventIdToEvent.length, id, module, method);
 }
 
 
