@@ -38,12 +38,18 @@ def main():
 	import commands as c
 
 	commands = {
-		"connect":		c.cmdConnect,
-		"disconnect":	c.cmdDisconnect,
-		"echo":			c.cmdEcho,
-		"exit": 		c.cmdExit,
-		"fire":			c.cmdFireEvent,
+		"bindToEvent":		c.cmdBindToEvent,
+		"connect":			c.cmdConnect,
+		"disconnect":		c.cmdDisconnect,
+		"echo":				c.cmdEcho,
+		"exit": 			c.cmdExit,
+		"fire":				c.cmdFireEvent,
+		"help":				c.cmdHelp,
+		"registerModule":	c.cmdRegisterModule
 	}
+
+	# Make command list available to help command
+	commands["help"] = lambda *x,**y: c.cmdHelp(commands, *x, **y)
 
 	core = Core()
 
@@ -63,8 +69,11 @@ def main():
 			exceptionHandler(e)
 			continue
 
+	core._stop()
+
 	import atexit
 	atexit.register(readline.write_history_file, histfile)
+
 
 if __name__ == "__main__":
 	main()

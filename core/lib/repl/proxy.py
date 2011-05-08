@@ -19,12 +19,18 @@ class Core(object):
 
 		self._transport = transport
 		self._listener = event.Listener(transport)
+		self._listener.start()
 
 
 	def _registerHandler(self, *args, **kwargs):
 		if self._listener:
 			return self._listener.registerHandler(*args,**kwargs)
 		return False
+
+
+	def _stop(self):
+		if self._listener:
+			self._listener.stop()
 
 
 	def _decorate(func):
