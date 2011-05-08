@@ -418,7 +418,7 @@ class JsonRpc10:
             if( isinstance(data["error"], dict)  and  "code" in data["error"]  and  "message" in data["error"]  and
                 (len(data["error"])==2 or ("data" in data["error"] and len(data["error"])==3)) ):
                 if "data" not in data["error"]:
-                    error_data = None
+                    error_data = data["error"]["message"]
                 else:
                     error_data = data["error"]["data"]
 
@@ -610,7 +610,7 @@ class JsonRpc20:
             if not isinstance(data["error"], dict): raise RPCInvalidRPC("Invalid Response, invalid error-object.")
             if "code" not in data["error"]  or  "message" not in data["error"]:
                 raise RPCInvalidRPC("Invalid Response, invalid error-object.")
-            if "data" not in data["error"]:  data["error"]["data"] = None
+            if "data" not in data["error"]:  data["error"]["data"] = data["error"]["message"]
             if len(data["error"]) != 3:
                 raise RPCInvalidRPC("Invalid Response, invalid error-object.")
 
