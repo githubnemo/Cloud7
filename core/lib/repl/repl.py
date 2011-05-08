@@ -39,6 +39,7 @@ def main():
 
 	commands = {
 		"bindToEvent":		c.cmdBindToEvent,
+		"call":				c.cmdCall,
 		"connect":			c.cmdConnect,
 		"disconnect":		c.cmdDisconnect,
 		"echo":				c.cmdEcho,
