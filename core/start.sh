@@ -1,0 +1,19 @@
+#!/bin/sh
+
+if [ -e "start_config" ]; then
+	echo "Reading configuration"
+	. ./start_config
+fi
+
+if [ -z "$NODE" ] && ! which node >/dev/null; then
+	echo "node.js not found. Configure \$NODE in file start_config or fix your PATH"
+	exit 1
+fi
+
+trap "echo \"Aborting execution...\"" 2
+
+echo "Starting core"
+$NODE core.js
+res=$?
+echo "Core exited"
+exit $?
