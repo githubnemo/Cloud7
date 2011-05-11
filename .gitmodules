@@ -1,0 +1,6 @@
+[submodule "core/lib/peers/libcage"]
+	path = core/lib/peers/libcage
+	url = https://github.com/ytakano/libcage.git
+[submodule "core/lib/peers/node-dht"]
+	path = core/lib/peers/node-dht
+	url = https://github.com/githubnemo/node-dht.git
