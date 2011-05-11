@@ -612,8 +612,12 @@ Dispatcher.prototype = {
 var core = new Core(function() {
 
 	var net = require('net');
+	var conf = require('./lib/conf/conf.js');
+	var peers = require('./lib/peers/peers.js');
 
 	this.registerLocalModule("Core", CoreModule);
+	this.registerLocalModule("Peers", peers.getModule(LocalModule));
+	this.registerLocalModule("Config", conf.getModule(LocalModule));
 
 	var core = this;
 
