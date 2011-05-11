@@ -25,6 +25,10 @@ def exceptionHandler(exception):
 	print "Something went wrong: %s\n%s" % (exception,traceback.format_exc(exception))
 
 
+#def readline_completer(commands, text, state):
+#	return [n for n in commands.keys() if n[0:len(text)] == text][state]
+
+
 def main():
 	readline.set_history_length(20)
 
@@ -51,6 +55,8 @@ def main():
 
 	# Make command list available to help command
 	commands["help"] = lambda *x,**y: c.cmdHelp(commands, *x, **y)
+
+	#readline.set_completer(lambda *x,**kw: readline_completer(commands, *x, **kw))
 
 	core = Core()
 
