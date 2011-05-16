@@ -615,11 +615,12 @@ var core = new Core(function() {
 	var conf = require('./lib/conf/conf.js');
 	var peers = require('./lib/peers/peers.js');
 
-	this.registerLocalModule("Core", CoreModule);
-	this.registerLocalModule("Peers", peers.getModule(LocalModule));
-	this.registerLocalModule("Config", conf.getModule(LocalModule));
-
 	var core = this;
+
+	this.registerLocalModule("Core", CoreModule);
+	this.registerLocalModule("Config", conf.getModule(this));
+	this.registerLocalModule("Peers", peers.getModule(this));
+
 
 	// Setup RPC server
 	this.server = net.createServer(function (socket) {

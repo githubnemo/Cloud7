@@ -2,6 +2,15 @@ var dht = require('./node-dht/dht.js');
 var http = require('http');
 var route = require('./route.js');
 
+/**
+ * node-dht notes:
+ *
+ * - node.put() can only take buffers with a 16 bit length
+ *   because libcage uses uint16_t as length.
+ *
+ */
+
+
 var cloud7tracker = 'cloud7.heroku.com';
 
 // responseCallback(peer, error)
@@ -116,11 +125,9 @@ function trackerNetworkCreate(networkName, password, responseCallback) {
 }
 
 
-function getModule(LocalModule) {
+function getModule(Core) {
 
-	var PeerModule = function(name, methods, obj) {
-		LocalModule.apply(this, [name, methods, obj]);
-
+	var PeerModule = function() {
 		// TODO configurable/automatic port
 
 		this.node = dht.createNode(8125).setGlobal();
@@ -173,7 +180,7 @@ function getModule(LocalModule) {
 
 	};
 
-	return PeerModule;
+	return new PeerModule();
 }
 
 module.exports = {getModule: getModule};
