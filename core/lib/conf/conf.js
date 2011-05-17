@@ -26,15 +26,14 @@ for (attrname in user_properties) {
 module.exports = properties;
 */
 
-function getModule(LocalModule) {
+function getModule(Core) {
 
-	var ConfModule = function(name, methods, obj) {
-		LocalModule.apply(this, [name, methods, obj]);
+	var ConfModule = function() {
 	}
 
 	ConfModule.prototype = {};
 
-	return ConfModule;
+	return new ConfModule();
 
 }
 
