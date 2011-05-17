@@ -13,7 +13,7 @@ fi
 trap "echo \"Aborting execution...\"" 2
 
 echo "Starting core"
-$NODE core.js
+$NODE_PATH/node core.js
 res=$?
 echo "Core exited"
 exit $?
