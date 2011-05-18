@@ -80,10 +80,20 @@ Apply this patch to node's WAF:
 
 
 Note: for building with node-waf one needs to set
+Note: this is only necessary if you didn't install node globally
 
 - PATH to $NODEDIR/tools
 - PYTHONPATH=$NODEDIR/tools/wafadmin/:$NODEDIR/tools/wafadmin/Tools
 - PREFIX_NODE=$NODEDIR
+
+Also you want to create a symlink
+
+	$NODEDIR/include/node -> $NODEDIR/src
+
+And change some lines in `$NODEDIR/tools/node-waf`
+
+	prefix = os.getenv('PREFIX_NODE') or join(bindir, "..")
+	wafdir = os.getenv('PREFIX_NODE') and join(prefix, 'tools') or join(prefix, "lib", "node")
 
 Finally the following command line worked for me building node-dht:
 
