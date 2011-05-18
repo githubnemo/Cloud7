@@ -255,13 +255,17 @@ function getModule(Core) {
 
 		// TODO discuss: all those methods should work without the tracker if peers are known.
 		createNetwork: function(name) {
+			var peer = this.module;
+			var socket = this.socket;
+			var moduleRequestId = this.requestId;
+
 			trackerNetworkCreate(name, peer.port, function(token, error) {
 				if(error !== null) {
-					this.networks[name] = token; // FIXME new structure!
-					this.socket.write(Core.createJsonRpcResponse(this.requestId, token));
+					peer.networks[name] = { token: token, protected: false };
+					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
 					console.log('added network',name);
 				} else {
-					this.socket.write(Core.createJsonRpcError(this.requestId, error, Core.json_errors.internal_error));
+					socket.write(Core.createJsonRpcError(moduleRequestId, error, Core.json_errors.internal_error));
 					console.log('error while creating network', name, error);
 				}
 			});
@@ -274,12 +278,12 @@ function getModule(Core) {
 
 			trackerNetworkCreate(name, peer.port, function(token, error) {
 				if(error !== null) {
-					peer.networks[name] = { token: token, protected: false };
+					peer.networks[name] = { token: token, protected: true };
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
-					console.log('added network',name);
+					console.log('added protected network',name);
 				} else {
 					this.socket.write(Core.createJsonRpcError(this.requestId, error, Core.json_errors.internal_error));
-					console.log('error while creating network', name, error);
+					console.log('error while creating protected network', name, error);
 				}
 			});
 		},
