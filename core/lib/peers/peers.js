@@ -70,11 +70,10 @@ function trackerNetworkList(responseCallback) {
 
 // responseCallback(token, error)
 //
-// Create network (protected if password != null) on the tracker
-// and hand the generated admin token to the callback as well
-// as an error (null if no error occured).
+// Create network on the tracker and hand the generated admin token to
+// the callback as well as an error (null if no error occured).
 //
-function trackerNetworkCreate(networkName, password, nodePort, responseCallback) {
+function trackerNetworkCreate(networkName, nodePort, responseCallback) {
 	var options = {
 		host: cloud7tracker,
 		port: 80,
@@ -256,13 +255,17 @@ function getModule(Core) {
 
 		// TODO discuss: all those methods should work without the tracker if peers are known.
 		createNetwork: function(name) {
-			trackerNetworkCreate(name, null, this.port, function(token, error) {
+			var peer = this.module;
+			var socket = this.socket;
+			var moduleRequestId = this.requestId;
+
+			trackerNetworkCreate(name, peer.port, function(token, error) {
 				if(error !== null) {
-					this.networks[name] = token; // FIXME new structure!
-					this.socket.write(Core.createJsonRpcResponse(this.requestId, token));
+					peer.networks[name] = { token: token, protected: false };
+					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
 					console.log('added network',name);
 				} else {
-					this.socket.write(Core.createJsonRpcError(this.requestId, error, Core.json_errors.internal_error));
+					socket.write(Core.createJsonRpcError(moduleRequestId, error, Core.json_errors.internal_error));
 					console.log('error while creating network', name, error);
 				}
 			});
@@ -273,14 +276,14 @@ function getModule(Core) {
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
 
-			trackerNetworkCreate(name, password, this.port, function(token, error) {
+			trackerNetworkCreate(name, peer.port, function(token, error) {
 				if(error !== null) {
-					peer.networks[name] = { token: token, protected: false };
+					peer.networks[name] = { token: token, protected: true };
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
-					console.log('added network',name);
+					console.log('added protected network',name);
 				} else {
 					this.socket.write(Core.createJsonRpcError(this.requestId, error, Core.json_errors.internal_error));
-					console.log('error while creating network', name, error);
+					console.log('error while creating protected network', name, error);
 				}
 			});
 		},
