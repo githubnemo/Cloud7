@@ -70,11 +70,10 @@ function trackerNetworkList(responseCallback) {
 
 // responseCallback(token, error)
 //
-// Create network (protected if password != null) on the tracker
-// and hand the generated admin token to the callback as well
-// as an error (null if no error occured).
+// Create network on the tracker and hand the generated admin token to
+// the callback as well as an error (null if no error occured).
 //
-function trackerNetworkCreate(networkName, password, nodePort, responseCallback) {
+function trackerNetworkCreate(networkName, nodePort, responseCallback) {
 	var options = {
 		host: cloud7tracker,
 		port: 80,
@@ -256,7 +255,7 @@ function getModule(Core) {
 
 		// TODO discuss: all those methods should work without the tracker if peers are known.
 		createNetwork: function(name) {
-			trackerNetworkCreate(name, null, this.port, function(token, error) {
+			trackerNetworkCreate(name, peer.port, function(token, error) {
 				if(error !== null) {
 					this.networks[name] = token; // FIXME new structure!
 					this.socket.write(Core.createJsonRpcResponse(this.requestId, token));
@@ -273,7 +272,7 @@ function getModule(Core) {
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
 
-			trackerNetworkCreate(name, password, this.port, function(token, error) {
+			trackerNetworkCreate(name, peer.port, function(token, error) {
 				if(error !== null) {
 					peer.networks[name] = { token: token, protected: false };
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
