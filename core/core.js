@@ -211,8 +211,10 @@ Core.prototype = {
 	},
 
 	validateJsonRpcRequest: function(req) {
+		if(req.params === undefined) {
+			req.params = [];
+		}
 		return typeof req.method !== 'undefined' &&
-				typeof req.params !== 'undefined' &&
 				typeof req.id !== 'undefined';
 	},
 
