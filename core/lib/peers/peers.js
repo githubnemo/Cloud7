@@ -249,9 +249,9 @@ function getModule(Core) {
 				return;
 			}
 
-			if(Core.validJsonRpcResponse(jsonData)) {
+			if(Core.validateJsonRpcResponse(jsonData)) {
 				handleResponse(jsonData);
-			} else if(Core.validJsonRpcRequest(jsonData)) {
+			} else if(Core.validateJsonRpcRequest(jsonData)) {
 				handleRequest(jsonData);
 			} else {
 				console.log('Invalid json-rpc request', jsonData, 'from', from);
