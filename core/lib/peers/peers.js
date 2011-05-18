@@ -81,29 +81,41 @@ function trackerNetworkCreate(networkName, nodePort, responseCallback) {
 
 	// Register network by passing a POST request to the tracker
 	function registerNetwork(localIP, gatewayIP) {
-		options['path'] = '/network/' + networkName;
+		options['path'] = '/network';
 		options['method'] = 'POST';
+
+		var reqData = querystring.stringify({
+			name: networkName,
+			lan_ip: localIP,
+			gateway_ip: gatewayIP,
+			port: nodePort
+		});
+
+		options['headers'] = {}
+		options['headers']['Content-Length'] = reqData.length;
 
 		var req = http.request(options, function(response) {
 			response.on('data', function(data) {
-				var networkToken;
+				var response;
 				try {
-					networkToken = JSON.parse(data)['token'];
+					response = JSON.parse(data);
 				} catch(e) {
+					console.log(data.toString())
 					return responseCallback(null, e);
 				}
-				responseCallback(networkToken, null);
+				if(response.status != undefined) {
+					responseCallback(null, response.status);
+				} else {
+					responseCallback(response.token, null);
+				}
 			});
 		});
 
-		req.write(querystring.stringify({
-			networkName: networkName,
-			lanIP: localIP,
-			gatewayIP: gatewayIP,
-			port: nodePort
-		}));
+		req.write(reqData);
 
 		req.end();
+
+		console.log(req);
 	}
 
 	// Fetch local and gateway IP, pass it to registerNetwork
@@ -112,7 +124,7 @@ function trackerNetworkCreate(networkName, nodePort, responseCallback) {
 		options['method'] = 'GET';
 
 		http.get(options, function(response) {
-			var localIP = response.connection.address();
+			var localIP = response.connection.address()['address'];
 
 			route.getDefaultRoute(function(gatewayIP) {
 				// TODO check route === null
@@ -255,15 +267,15 @@ function getModule(Core) {
 
 		// TODO discuss: all those methods should work without the tracker if peers are known.
 		createNetwork: function(name) {
-			var peer = this.module;
+			var peer = this.module.obj;
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
 
 			trackerNetworkCreate(name, peer.port, function(token, error) {
-				if(error !== null) {
+				if(error === null) {
 					peer.networks[name] = { token: token, protected: false };
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
-					console.log('added network',name);
+					console.log('added network',name,'token',token);
 				} else {
 					socket.write(Core.createJsonRpcError(moduleRequestId, error, Core.json_errors.internal_error));
 					console.log('error while creating network', name, error);
@@ -272,12 +284,12 @@ function getModule(Core) {
 		},
 
 		createProtectedNetwork: function(name, password) {
-			var peer = this.module;
+			var peer = this.module.obj;
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
 
 			trackerNetworkCreate(name, peer.port, function(token, error) {
-				if(error !== null) {
+				if(error === null) {
 					peer.networks[name] = { token: token, protected: true };
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
 					console.log('added protected network',name);
@@ -293,7 +305,7 @@ function getModule(Core) {
 			var requestId = this.requestId;
 
 			trackerNetworkList(function(list, error) {
-				if(error !== null) {
+				if(error === null) {
 					socket.write(Core.createJsonRpcResponse(requestId, list));
 					console.log('network list', list);
 				} else {
@@ -308,13 +320,13 @@ function getModule(Core) {
 		// ------------------------------------
 
 		joinNetwork: function(networkName) {
-			var peer = this.module;				// this very module
+			var peer = this.module.obj;			// this very module
 			var socket = this.socket;			// requesting module's socket
 			var moduleReqId = this.requestId;	// requesting module's request id
 
 			// Get network from tracker.
 			trackerNetworkRequest(networkName, function(rootPeer, error) {
-				if(error !== undefined) {
+				if(error != null) {
 					socket.write(Core.createJsonRpcError(moduleReqId, 'Error in getting network from tracker: ' + error,
 							Core.json_errors.internal_error));
 					return;
