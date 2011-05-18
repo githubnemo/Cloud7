@@ -314,7 +314,7 @@ var CoreModule = {
 				return;
 			}
 
-			method.apply({socket: this.socket, requestId: this.generateRequestId(), core: this.core}, data);
+			method.apply({module: module, socket: this.socket, requestId: this.generateRequestId(), core: this.core}, data);
 		}
 	},
 
@@ -583,7 +583,7 @@ Dispatcher.prototype = {
 			return;
 		}
 
-		method.apply({socket: this.socket, requestId: request.id, core: this.core}, request.params);
+		method.apply({module: module, socket: this.socket, requestId: request.id, core: this.core}, request.params);
 	},
 
 	routeResponse: function(response) {
