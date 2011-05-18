@@ -16,16 +16,18 @@ var querystring = require('querystring');
 var cloud7tracker = 'cloud7.heroku.com';
 
 // responseCallback(peer, error)
-//   peer: {ip: ..., port: ...}
+//   peer: {ip: ..., port: ..., id: ...}
 //   error: Exception or null
 //
 function trackerNetworkRequest(networkName, responseCallback) {
 	var options = {
 		host: cloud7tracker,
 		port: 80,
+		// TODO spec says /network/[networkName]/[gatewayIP]
 		path: '/network/' + networkName,
 		method: 'GET',
 	};
+
 	http.get(options, function(res) {
 		res.on('data', function(data) {
 			var peer;
@@ -73,7 +75,7 @@ function trackerNetworkList(responseCallback) {
 // Create network on the tracker and hand the generated admin token to
 // the callback as well as an error (null if no error occured).
 //
-function trackerNetworkCreate(networkName, nodePort, responseCallback) {
+function trackerNetworkCreate(networkName, nodePort, nodeId, responseCallback) {
 	var options = {
 		host: cloud7tracker,
 		port: 80,
@@ -88,7 +90,8 @@ function trackerNetworkCreate(networkName, nodePort, responseCallback) {
 			name: networkName,
 			lan_ip: localIP,
 			gateway_ip: gatewayIP,
-			port: nodePort
+			port: nodePort,
+			dht_id: nodeId
 		});
 
 		options['headers'] = {}
@@ -100,7 +103,6 @@ function trackerNetworkCreate(networkName, nodePort, responseCallback) {
 				try {
 					response = JSON.parse(data);
 				} catch(e) {
-					console.log(data.toString())
 					return responseCallback(null, e);
 				}
 				if(response.status != undefined) {
@@ -112,10 +114,7 @@ function trackerNetworkCreate(networkName, nodePort, responseCallback) {
 		});
 
 		req.write(reqData);
-
 		req.end();
-
-		console.log(req);
 	}
 
 	// Fetch local and gateway IP, pass it to registerNetwork
@@ -271,7 +270,7 @@ function getModule(Core) {
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
 
-			trackerNetworkCreate(name, peer.port, function(token, error) {
+			trackerNetworkCreate(name, peer.port, peer.node.id, function(token, error) {
 				if(error === null) {
 					peer.networks[name] = { token: token, protected: false };
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
@@ -288,7 +287,7 @@ function getModule(Core) {
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
 
-			trackerNetworkCreate(name, peer.port, function(token, error) {
+			trackerNetworkCreate(name, peer.port, peer.node.id, function(token, error) {
 				if(error === null) {
 					peer.networks[name] = { token: token, protected: true };
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
@@ -332,30 +331,34 @@ function getModule(Core) {
 					return;
 				}
 
+				console.log(rootPeer);
+
 				// Join a node from the network, send join request to the node.
 				peer.node.join(rootPeer.ip, rootPeer.port, function(success) {
 					var requestId = Core.generateRequestId();
 					var request = Core.createJsonRpcRequest('join', [networkName], requestId);
 
 					// Register handler for join request response.
-					node.pendingRequests[requestId] = function(response, error) {
+					peer.pendingRequests[requestId] = function(response, error) {
 						if(error == null && response === 'ok') {
-							node.joinedNetworks[networkName] = { rootNode: rootPeer.id }; // mark as joined
+							peer.joinedNetworks[networkName] = { rootNode: rootPeer.dht_id }; // mark as joined
 							socket.write(Core.createJsonRpcResponse(moduleReqId, true));
 						} else {
 							socket.write(Core.createJsonRpcError(moduleReqId, error, Core.json_errors.internal_error));
 						}
 					};
 
-					this.send(rootPeer.id, makeBuffer(request));
+					this.send(rootPeer.dht_id, makeBuffer(request));
 				});
 			});
 		},
 
 		joinProtectedNetwork: function(name, password) {
+			var peer = this.module.obj;
+
 			trackerNetworkRequest(name, function(rootPeer, error) {
 				// TODO check error
-				this.node.join(rootPeer.ip, rootPeer.port, function(success) {
+				peer.node.join(rootPeer.ip, rootPeer.port, function(success) {
 					// TODO implement
 				});
 			});
