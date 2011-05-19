@@ -33,7 +33,7 @@ def cmdCall(core, argv):
 def cmdConnect(core, argv):
 	port = len(argv) > 1 and int(argv[1]) or 8124
 
-	transport = TransportTcpIpSendReceive(addr=("127.0.0.1", port), logfunc=log_file("transport.log"))
+	transport = TransportTcpIpSendReceive(addr=("127.0.0.1", port), timeout=5.0, logfunc=log_file("transport.log"))
 	proxy = ServerProxy( JsonRpc20(), transport )
 
 	core._feedProxy(proxy, transport)
