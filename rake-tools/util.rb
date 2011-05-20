@@ -4,6 +4,12 @@ module Util
     Dir.glob("#{$temp_dir}/node-*/").last
   end
 
+  def isValidArchive(path)
+    notice "Broken archive '#{path}'"
+    `tar -tvzf #{path} 2>&1 >/dev/null`
+    return $?.success?
+  end
+
   def doSystem(cmd)
     notice "Executing '#{cmd}'"
     if ENV.include?('verbose')
