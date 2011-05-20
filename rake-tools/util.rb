@@ -10,7 +10,7 @@ module Util
       return true if system("#{cmd} 2>&1")
     else
       %x[#{cmd} 2>&1]
-      return true if Integer(%x[echo $?]) === 0
+      return true if $?.success?
     end
     error "Error executing '#{cmd}'"
   end
