@@ -210,6 +210,22 @@ Core.prototype = {
 		internal_error: 	-32603  	// Internal error 		Internal JSON-RPC error.
 	},
 
+	validateJsonRpcRequest: function(req) {
+		if(req.params === undefined) {
+			req.params = [];
+		}
+		return typeof req.method !== 'undefined' &&
+				typeof req.id !== 'undefined';
+	},
+
+
+	validateJsonRpcResponse: function(resp) {
+		return (typeof resp.result !== 'undefined' ||
+				typeof resp.error !== 'undefined') &&
+				typeof resp.id !== 'undefined' &&
+				typeof resp.jsonrpc !== 'undefined';
+	},
+
 	// JSON RPC helper
 	// TODO move those helpers into a json-rpc module
 	createJsonRpcResponse: function (id, result) {
@@ -300,7 +316,7 @@ var CoreModule = {
 				return;
 			}
 
-			method.apply({socket: this.socket, requestId: this.generateRequestId(), core: this.core}, data);
+			method.apply({module: module, socket: this.socket, requestId: this.generateRequestId(), core: this.core}, data);
 		}
 	},
 
@@ -524,10 +540,9 @@ var Dispatcher = function(message, socket, core) {
 
 	this.socket = socket;
 
-
-	if(this.validateRequest(message)) {
+	if(this.core.validateJsonRpcRequest(message)) {
 		this.routeRequest(message);
-	} else if(this.validateResponse(message)) {
+	} else if(this.core.validateJsonRpcResponse(message)) {
 		this.routeResponse(message);
 	} else {
 		console.log("Invalid JSON-RPC 2.0 Data:", message);
@@ -537,23 +552,6 @@ var Dispatcher = function(message, socket, core) {
 };
 
 Dispatcher.prototype = {
-
-
-	validateRequest: function(req) {
-		return typeof req.method !== 'undefined' &&
-				typeof req.params !== 'undefined' &&
-				typeof req.id !== 'undefined';
-	},
-
-
-	validateResponse: function(resp) {
-		return (typeof resp.result !== 'undefined' ||
-				typeof resp.error !== 'undefined') &&
-				typeof resp.id !== 'undefined' &&
-				typeof resp.jsonrpc !== 'undefined';
-	},
-
-
 
 	routeRequest: function(request) {
 
@@ -587,7 +585,7 @@ Dispatcher.prototype = {
 			return;
 		}
 
-		method.apply({socket: this.socket, requestId: request.id, core: this.core}, request.params);
+		method.apply({module: module, socket: this.socket, requestId: request.id, core: this.core}, request.params);
 	},
 
 	routeResponse: function(response) {

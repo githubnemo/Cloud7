@@ -1,14 +1,27 @@
 # Building node-dht
 
 The journey of building node-dht (https://github.com/tilgovi/node-dht)[https://github.com/tilgovi/node-dht] for nodejs 0.4.5.
+It's strongly recommended that you use (https://github.com/githubnemo/node-dht)[https://github.com/githubnemo/node-dht]
+instead of the origin repository.
+
+In the following text, `$NODEDIR` is set to the place where the nodejs package lies.
+Example:
+
+	$ cd ~/Downloads/
+    $ tar -xvjf node-v0.4.5.tar.gz
+	$ NODEDIR=$PWD/node-v0.4.5
+
+So the `$NODEDIR` in this case is `~/Downloads/node-v0.4.5`.
+
+Same goes for `$LIBCAGEDIR` which represents the directory of libcage.
 
 ## Dependencies
 
-libev
-libboost-dev
-libssl-dev
-libcage
-nodejs
+- libev
+- libboost-dev
+- libssl-dev
+- libcage
+- nodejs
 
 ## Building
 
@@ -16,11 +29,16 @@ nodejs
 
 #### using nodejs' libevent
 
-first, modify libev.source in the libev wscript so it looks like this:
+This assumes, one is using the libev nodejs is using.
+First, modify libev.source in the libev wscript so it looks like this:
 
 	libev.source = ['ev.c','event.c']
 
-one has to compile node's libev with -fPIC:
+You can find the wscript in
+
+    $NODEDIR/deps/libev
+
+one has to compile node's libev with -fPIC so we can add those object files later to libcage:
 
 	$ CXXFLAGS="-fPIC" CFLAGS="-fPIC" python tools/waf-light --product-type=deps/libev/ clean configure build
 
@@ -28,7 +46,7 @@ then build libcage.
 
 #### building from source
 
-Check out http://software.schmorp.de/pkg/libev.html
+Check out (http://software.schmorp.de/pkg/libev.html)[http://software.schmorp.de/pkg/libev.html].
 
 ### libcage
 
@@ -38,105 +56,19 @@ Check out http://software.schmorp.de/pkg/libev.html
 
 #### with node's libev
 
-first uncomment the line
+first comment the line
 
 	LDFLAGS += -lev
 
 in OMakefile (line ~37), then run
 
-$ omake CXXFLAGS="-I/home/nemo/Code/Cloud7/tools/nodejs/node-v0.4.5/deps/libev/ -fPIC" LDFLAGS="/home/nemo/Code/Cloud7/tools/nodejs/node-v0.4.5/build/default/deps/libev/ev_1.o /home/nemo/Code/Cloud7/tools/nodejs/node-v0.4.5/build/default/deps/libev/event_1.o" EV=TRUE
+    $ omake CXXFLAGS="-I$NODEDIR/deps/libev/ -fPIC" LDFLAGS="$NODEDIR/build/default/deps/libev/ev_1.o $NODEDIR/build/default/deps/libev/event_1.o" EV=TRUE
 
 
 ### node-dht
-compiles soooo far:
 
-	[1/2] cxx: dht.cc -> build/default/dht_1.o
-	../dht.cc: In static member function ‘static v8::Handle<v8::Value> node_dht::DHT::Put(const v8::Arguments&)’:
-	../dht.cc:203:23: error: ‘class node::Buffer’ has no member named ‘data’
-	../dht.cc:203:36: error: ‘class node::Buffer’ has no member named ‘length’
-	../dht.cc:204:25: error: ‘class node::Buffer’ has no member named ‘data’
-	../dht.cc:204:40: error: ‘class node::Buffer’ has no member named ‘length’
-	../dht.cc: In static member function ‘static v8::Handle<v8::Value> node_dht::DHT::Get(const v8::Arguments&)’:
-	../dht.cc:232:26: error: ‘class node::Buffer’ has no member named ‘data’
-	../dht.cc:232:42: error: ‘class node::Buffer’ has no member named ‘length’
-	../dht.cc: In static member function ‘static v8::Handle<v8::Value> node_dht::DHT::FillGetBuffers(const v8::Arguments&)’:
-	../dht.cc:254:19: error: ‘class node::Buffer’ has no member named ‘data’
-	../dht.cc:254:49: error: ‘class node::Buffer’ has no member named ‘length’
-	../dht.cc: In static member function ‘static v8::Handle<v8::Value> node_dht::DHT::SendDgram(const v8::Arguments&)’:
-	../dht.cc:313:31: error: ‘class node::Buffer’ has no member named ‘data’
-	../dht.cc:313:45: error: ‘class node::Buffer’ has no member named ‘length’
-	../dht.cc: In member function ‘void node_dht::DHT::dgram_func::operator()(void*, size_t, uint8_t*)’:
-	../dht.cc:379:18: error: ‘class node::Buffer’ has no member named ‘data’
-	Waf: Leaving directory `/home/nemo/Code/Cloud7/core/lib/peers/node-dht/build'
-	Build failed:  -> task failed (err #1):
-		{task: cxx dht.cc -> dht_1.o}
-
-The following patch resolves the errors:
-
-	diff --git a/dht.cc b/dht.cc
-	index 6d544e0..5a5da72 100644
-	--- a/dht.cc
-	+++ b/dht.cc
-	@@ -200,8 +200,8 @@ Handle<Value> DHT::Put(const Arguments& args) {
-	   bool hasUnique = hasOptional && optCorrectType;
-	   bool isUnique = hasUnique ? args[3]->ToBoolean()->Value() : false;
-
-	-  dht->cage->put(key->data(), key->length(),
-	-                 value->data(), value->length(), ttl, isUnique);
-	+  dht->cage->put(Buffer::Data(key), Buffer::Length(key),
-	+                 Buffer::Data(value), Buffer::Length(value), ttl, isUnique);
-
-	   return args.This();
-	 }
-	@@ -229,7 +229,7 @@ Handle<Value> DHT::Get(const Arguments& args) {
-
-	   // -> into libcage ->
-	   dht->Ref();
-	-  dht->cage->get(buffer->data(), buffer->length(), dht->get_fn);
-	+  dht->cage->get(Buffer::Data(buffer), Buffer::Length(buffer), dht->get_fn);
-
-	   return args.This();
-	 }
-	@@ -244,14 +244,14 @@ Handle<Value> DHT::FillGetBuffers(const Arguments& args) {
-
-	   Local<Array> ar = args[0].As<Array>();
-	   int n = ar->Length();
-	-
-	+
-	   // Unwrap each Buffer contained in the array and fill in data
-	   // from the ready and willing storedBuffers.
-	   if (n) {
-		 libcage::dht::value_set::iterator it = dht->storedBuffers->begin();
-		 for (int i = 0; i < n && it != dht->storedBuffers->end(); ++it, i++) {
-		   Buffer * buf = ObjectWrap::Unwrap<Buffer>(ar->Get(i).As<Object>());
-	-      memcpy(buf->data(), it->value.get(), buf->length());
-	+      memcpy(Buffer::Data(buf), it->value.get(), Buffer::Length(buf));
-		 }
-	   }
-
-	@@ -310,7 +310,7 @@ Handle<Value> DHT::SendDgram(const Arguments& args) {
-	   uint8_t id[CAGE_ID_LEN];
-	   StringToId(args[0].As<String>(), id);
-
-	-  dht->cage->send_dgram(data->data(), data->length(), id);
-	+  dht->cage->send_dgram(Buffer::Data(data), Buffer::Length(data), id);
-
-	   return args.This();
-	 }
-	@@ -376,8 +376,8 @@ void DHT::dgram_func::operator() (void* buf, size_t len, uint8_t* id) {
-
-	   Buffer * buffer = Buffer::New(len);
-
-	-  memcpy(buffer->data(), buf, len);
-	-
-	+  memcpy(Buffer::Data(buffer), buf, len);
-	+
-	   Handle<Value> argv[2];
-	   argv[0] = buffer->handle_;
-	   argv[1] = IdToString(id);
-
-
-WAF is outdated, too. It doesn't read LINKFLAGS from the environment. If you use it, apply this patch to node's WAF:
+Patch nodejs' WAF: It doesn't read LINKFLAGS from the environment.
+Apply this patch to node's WAF:
 
 	--- node-v0.4.5/tools/wafadmin/Tools/gxx.py	2011-05-11 17:21:02.302735539 +0200
 	+++ node-v0.4.5/tools/wafadmin/Tools/gxx.py	2011-05-11 17:21:11.142735543 +0200
@@ -147,16 +79,35 @@ WAF is outdated, too. It doesn't read LINKFLAGS from the environment. If you use
 	+	conf.link_add_flags()
 
 
+Note: for building with node-waf one needs to set
+Note: this is only necessary if you didn't install node globally
+
+- PATH to $NODEDIR/tools
+- PYTHONPATH=$NODEDIR/tools/wafadmin/:$NODEDIR/tools/wafadmin/Tools
+- PREFIX_NODE=$NODEDIR
+
+Also you want to create a symlink
+
+	$NODEDIR/include/node -> $NODEDIR/src
+
+And change some lines in `$NODEDIR/tools/node-waf`
+
+	prefix = os.getenv('PREFIX_NODE') or join(bindir, "..")
+	wafdir = os.getenv('PREFIX_NODE') and join(prefix, 'tools') or join(prefix, "lib", "node")
+
 Finally the following command line worked for me building node-dht:
 
-	$ CXXFLAGS="-I/home/nemo/Code/Cloud7/tools/nodejs/node-v0.4.5/deps/libeio/ -I/home/nemo/Code/Cloud7/core/lib/peers/libcage/libev/ -I/home/nemo/Code/Cloud7/tools/nodejs/node-v0.4.5/deps/v8/include/ -I$PWD/../libcage/include" LINKFLAGS="-L$PWD/../libcage/src/" node-waf configure build -v
+	$ CXXFLAGS="-I$NODEDIR/deps/libeio/ -I$LIBEVDIR/libev/ -I$NODEDIR/deps/v8/include/ -I$LIBCAGEDIR/include" LINKFLAGS="-L$LIBCAGEDIR/src/" node-waf configure build -v
 
 or the following if you're using node's libev:
 
-	$ CXXFLAGS="-I/home/nemo/Code/Cloud7/tools/nodejs/node-v0.4.5/deps/libeio/ -I/home/nemo/Code/Cloud7/tools/nodejs/node-v0.4.5/deps/libev -I/home/nemo/Code/Cloud7/tools/nodejs/node-v0.4.5/deps/v8/include/ -I$PWD/../libcage/include" LINKFLAGS="-L$PWD/../libcage/src/" node-waf configure build
+	$ CXXFLAGS="-I$NODEDIR/deps/libeio/ -I$NODEDIR/deps/libev -I$NODEDIR/deps/v8/include/ -I$PWD/../libcage/include" LINKFLAGS="-L$LIBCAGEDIR/src/" node-waf configure build
 
-and
 
-	$ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:./peers/libcage/src/:./peers/libcage/libev/.libs/ ../../tools/nodejs/node-v0.4.5/node
+To run nodejs without nodejs' libev enter:
 
-runs it.
+	$ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$LIBCAGEDIR/src/:$LIBEVDIR/.libs/ $NODEDIR/node
+
+If compiled with nodejs' libev:
+
+	$ LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$LIBCAGEDIR/src/ $NODEDIR/node
