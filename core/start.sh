@@ -5,11 +5,20 @@ if [ -e "start_config" ]; then
 	. ./start_config
 fi
 
-if [ -z "$NODE" ] && ! which node >/dev/null; then
-	echo "node.js not found. Configure \$NODE in file start_config or fix your PATH"
+no_nodejs() {
+	echo "node.js not found. Configure \$NODE_PATH in file start_config or fix your PATH"
 	exit 1
-elif [ -z "$NODE" ]; then
-	NODE=$(which node)
+}
+
+if [ -z "$NODE_PATH" ] && ! which node >/dev/null; then
+	no_nodejs
+elif [ -z "$NODE_PATH" ]; then
+	NODE_PATH=$(dirname $(which node))
+fi
+
+# Check for existance of executable
+if [ -z "$NODE_PATH" ] || ! [ -e "$NODE_PATH/node" ]; then
+	no_nodejs
 fi
 
 trap "echo \"Aborting execution...\"" 2
