@@ -5,9 +5,13 @@ module Util
   end
 
   def isValidArchive(path)
-    notice "Broken archive '#{path}'"
     `tar -tvzf #{path} 2>&1 >/dev/null`
-    return $?.success?
+    valid = $?.success?
+    if not valid
+      notice "Deleting broken archive '#{path}'"
+      doSystem("rm -f #{path}")
+    end
+    valid
   end
 
   def doSystem(cmd)
