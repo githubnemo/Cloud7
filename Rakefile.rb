@@ -31,7 +31,7 @@ namespace :build do
     # Only extract if necessary
     if getNodeDir().nil?
       msg "Extracting node"
-      throw "Broken 'node-latest.tar.gz'" unless system('tar -xzf node-latest.tar.gz')
+      doSystem('tar -xzf node-latest.tar.gz')
     end
 
     node_dir = getNodeDir()
