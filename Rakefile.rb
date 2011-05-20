@@ -11,6 +11,8 @@ $temp_dir = Dir.pwd + "/_temp"
 
 
 task :init do
+  requirement('patch', :binary)
+
   if not File.directory?($temp_dir)
     notice "Creating temporary directory '#{$temp_dir}'"
     Dir.mkdir($temp_dir)
