@@ -88,7 +88,7 @@ end
 
 namespace :libcage do
 
-  task :build => [ :init, :node ] do
+  task :build => [ :init, "node:build" ] do
     msg "Building libcage"
 
     doSystem('git clone git://github.com/githubnemo/libcage.git libcage') unless
