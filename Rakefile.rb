@@ -27,8 +27,10 @@ namespace :build do
 
   task :node => :init do
     msg "Downloading node source"
-    doSystem('wget http://nodejs.org/dist/node-latest.tar.gz') unless
-      File.exists?("node-latest.tar.gz")
+
+    if ( not File.exists?('node-latest.tar.gz') or not isValidArchive('node-latest.tar.gz') )
+      doSystem('wget http://nodejs.org/dist/node-latest.tar.gz')
+    end
 
     # Only extract if necessary
     if getNodeDir().nil?
