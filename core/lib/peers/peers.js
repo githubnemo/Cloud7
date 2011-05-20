@@ -9,8 +9,6 @@ var querystring = require('querystring');
  * - node.put() can only take buffers with a 16 bit length
  *   because libcage uses uint16_t as length.
  *
- * - node.put() takes seconds as TTL, not msec.
- *
  * - it seems that libcage/nodejs is VERY time-sensitive.
  *   if a join takes too much time the join fails due to
  *   MISSED packets. This must be fixed _SOON_.
@@ -33,7 +31,7 @@ var querystring = require('querystring');
  * global FIXMEs:
  *
  * - calling joinNetwork from the same client twice results in a weird
- *   list structure of DHT[networkPeersKey(network)].
+ *   list structure of DHT[networkKey(network)].
  */
 
 
@@ -159,7 +157,7 @@ function trackerNetworkCreate(networkName, nodePort, nodeId, responseCallback) {
 	getRegistrationData();
 }
 
-function networkPeersKey(networkName) { return makeBuffer(networkName + "_peers"); }
+function networkKey(networkName) { return makeBuffer(networkName); }
 
 function makeBuffer(s) { return new Buffer(s.toString()); }
 
@@ -190,7 +188,11 @@ function getModule(Core) {
 		this.networks = {};
 
 		// Mapping of networks joined by this node.
-		// { <name> : { rootNode: <rootNodeID> } }
+		// { <name> : {
+		//    rootNode: <rootNodeID>,
+		//    peerListCache: <peer list>,
+		//    peerInterval: <peer list check interval id>
+		// } }
 		this.joinedNetworks = {};
 
 		// Mapping with allowed RPC request methods and
@@ -255,7 +257,7 @@ function getModule(Core) {
 						node.send(from, makeBuffer(
 									Core.createJsonRpcResponse(jsonData.id, true)));
 
-						peer.addPeerToNetwork(networkName, from);
+						peer._addPeerToNetwork(networkName, from);
 					} else {
 						// The peer got the wrong guy, we are not the network owner
 						// XXX is this really necessary? Can't everyone accept new peers?
@@ -273,7 +275,7 @@ function getModule(Core) {
 											Core.json_errors.internal_error)));
 					} else {
 						node.send(from, makeBuffer(Core.createJsonRpcResponse(jsonData.id, true)));
-						peer.removePeerFromNetwork(networkName, from);
+						peer._removePeerFromNetwork(networkName, from);
 					}
 				// Peer echo, return the strings send
 				} else if(jsonData.method === "echo") {
@@ -316,27 +318,24 @@ function getModule(Core) {
 		// Don't call them from the outside!
 		// ------------------------------------
 
-		addPeerToNetwork: function(networkName, peerId) {
-			var peer = this; // TODO refactor this method (s/peer/this/g)
-			var network = peer.networks[networkName];
-			var peerListKey = networkPeersKey(networkName);
-			var peerListLifetime = peer.peerListLifetime;
+		// Add handler which waits for the given requestId and gets executed.
+		// See the node recv handler (handleResponses) for details.
+		_addPendingRequest: function(requestId, handler) {
+			this.pendingRequests[requestId] = handler;
+		},
 
-			console.log('addPeerToNetwork(',networkName,',',peerId,')');
+		// Add peer to network list.
+		// This node must be the creator of the network to do this.
+		_addPeerToNetwork: function(networkName, peerId) {
+			var peer = this;
+			var network = peer.networks[networkName];
+			var peerListKey = networkKey(networkName);
+
+			console.log('_addPeerToNetwork(',networkName,',',peerId,')');
 
 			peer.node.get(peerListKey, function(ok, buffer) {
-				function onNoPeerlist() {
-					// No peer list found in the DHT for this network.
-					// Publish one if any peers are known.
-
-					// TODO cache peers locally, use them too
-
-					var peerList = JSON.stringify([peer.node.id, peerId]);
-					peer.node.put(peerListKey, makeBuffer(peerList), peerListLifetime);
-				}
-
 				if(!ok) {
-					return onNoPeerlist();
+					return;
 				}
 
 				var peers = [];
@@ -344,20 +343,17 @@ function getModule(Core) {
 				try {
 					peers = JSON.parse(buffer.toString());
 				} catch(e) {
-					return onNoPeerlist();
+					return;
 				}
 
 				// Add peer to peer list and publish the list
 				var peerList = JSON.stringify( peers.concat(peerId) );
-				peer.node.put(peerListKey, makeBuffer(peerList), peerListLifetime);
+				peer.node.put(peerListKey, makeBuffer(peerList), peer.peerListLifetime);
 			});
-
-			// TODO good idea?
-			//network.peers = network.peers.concat(peerId);
 		},
 
-		removePeerFromNetwork: function(networkName, peerId) {
-			this.node.get(networkPeersKey(networkName), function(ok, data) {
+		_removePeerFromNetwork: function(networkName, peerId) {
+			this.node.get(networkKey(networkName), function(ok, data) {
 				if(!ok) {
 					return;
 				}
@@ -370,12 +366,12 @@ function getModule(Core) {
 				}
 
 				var peerList = peers.filter(function(e) { return e != peerId; });
-				this.put(networkPeersKey(networkName), makeBuffer(JSON.stringify(peerList)), this.peerListLifetime);
+				this.put(networkKey(networkName), makeBuffer(JSON.stringify(peerList)), this.peerListLifetime);
 			});
 		},
 
 
-		refreshPeerList: function(peer, networkName) {
+		_refreshPeerList: function(peer, networkName) {
 			// Refresh the peer list in the DHT.
 			// This method is called periodically.
 			//
@@ -393,7 +389,7 @@ function getModule(Core) {
 				return;
 			}
 
-			peer.node.get(networkPeersKey(networkName), function(ok, data) {
+			peer.node.get(networkKey(networkName), function(ok, data) {
 				if(!ok) {
 					return;
 				}
@@ -407,13 +403,47 @@ function getModule(Core) {
 				}
 
 				var peerList = JSON.stringify(peers);
-				peer.node.put(networkPeersKey(networkName), makeBuffer(peerList), peer.peerListLifetime);
+
+				// Put the peer list as unique value in the DHT
+				peer.node.put(networkKey(networkName), makeBuffer(peerList), peer.peerListLifetime, true);
 			});
 		},
 
-		addNetwork: function(name, token, protected) {
+		// Check the peer list periodically. If it is not existant, it means the
+		// root node is unreachable. Try to overtake the network.
+		_checkPeerList: function(networkName) {
+			this.node.get(networkKey(networkName), function(ok, data) {
+				if(!ok) {
+					// TODO overtake network
+				} else {
+					// Cache peer list
+
+					var peerList = [];
+
+					try {
+						peerList = JSON.parse(data[0].toString());
+					} catch(e) {
+						// TODO overtake network
+					}
+
+					if(peerList.length == 0) {
+						// TODO overtake network
+					}
+
+					this.joinedNetworks[networkName]['peerListCache'] = peerList;
+				}
+			});
+		},
+
+		// Add created network to local network cache.
+		// TODO write the token in some file to restore it after client restart.
+		_addNetwork: function(name, token, protected) {
 			// Add peer list refreshing service
-			var intervalId = setInterval(this.refreshPeerList, this.peerListLifetime * 800, this, name);
+			var intervalId = setInterval(this._refreshPeerList, this.peerListLifetime * 0.8, this, name);
+
+			// TODO:  register network under a 'network' key in the DHT so the network can be discovered
+			// TODO:: without the help of the tracker. The value should be another key which is unique
+			// TODO:: and points to the root node's id.
 
 			this.networks[name] = {
 				token: token,
@@ -422,7 +452,35 @@ function getModule(Core) {
 			};
 		},
 
-		deleteNetwork: function(name) {
+		// Add joined network to local network cache.
+		// Start watching the network for missing peer list.
+		_addJoinedNetwork: function(rootPeer, networkName) {
+			var intervalId = setInterval(this._checkPeerList, this.peerListLifetime, networkName);
+
+			// mark as joined
+			this.joinedNetworks[networkName] = {
+				rootNode: rootPeer.dht_id,
+				peerInterval: intervalId
+			};
+		},
+
+		// Remove joined network from local joined networks cache.
+		// Stop watching the network.
+		_leaveNetwork: function(networkName) {
+			if(this.joinedNetworks[networkName] === undefined) {
+				return;
+			}
+
+			var network = this.joinedNetworks[networkName];
+
+			delete this.joinedNetworks[networkName];
+
+			clearInterval(network.peerInterval);
+		},
+
+		// Remove created network from local created networks cache.
+		// Stop emitting the peer list.
+		_deleteNetwork: function(name) {
 			// Stop peer refreshing service.
 		   	var network = this.networks[name];
 
@@ -434,11 +492,17 @@ function getModule(Core) {
 		},
 
 
+
+		// ------------------------------------
+		// Exported methods follow
+		// ------------------------------------
+
+
 		// ------------------------------------
 		// Tracker only interaction
 		// ------------------------------------
 
-		// TODO discuss: all those methods should work without the tracker if peers are known.
+		// Creates a new network on the tracker and in the DHT under the given name.
 		createNetwork: function(name) {
 			var peer = this.module.obj;
 			var socket = this.socket;
@@ -446,7 +510,7 @@ function getModule(Core) {
 
 			trackerNetworkCreate(name, peer.port, peer.node.id, function(token, error) {
 				if(error === null) {
-					peer.addNetwork(name, token, false);
+					peer._addNetwork(name, token, false);
 
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
 					console.log('added network',name,'token',token);
@@ -457,6 +521,7 @@ function getModule(Core) {
 			});
 		},
 
+		// Same as createNetwork except that this network will be password protected.
 		createProtectedNetwork: function(name, password) {
 			var peer = this.module.obj;
 			var socket = this.socket;
@@ -464,7 +529,7 @@ function getModule(Core) {
 
 			trackerNetworkCreate(name, peer.port, peer.node.id, function(token, error) {
 				if(error === null) {
-					peer.addNetwork(name, token, true);
+					peer._addNetwork(name, token, true);
 
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
 					console.log('added protected network',name);
@@ -475,6 +540,8 @@ function getModule(Core) {
 			});
 		},
 
+		// List of the available networks.
+		// TODO lookup for networks in the DHT.
 		listNetworks: function() {
 			var socket = this.socket;
 			var requestId = this.requestId;
@@ -498,6 +565,8 @@ function getModule(Core) {
 			var peer = this.module.obj;			// this very module
 			var socket = this.socket;			// requesting module's socket
 			var moduleReqId = this.requestId;	// requesting module's request id
+
+			// TODO ask the DHT for the network if we're connected
 
 			// Get network from tracker.
 			trackerNetworkRequest(networkName, function(rootPeer, error) {
@@ -525,10 +594,10 @@ function getModule(Core) {
 					rootPeer.dht_id = peers[0];
 
 					// Register handler for join request response.
-					peer.pendingRequests[requestId] = function(response, error) {
+					peer._addPendingRequest(requestId, function(response, error) {
 						console.log(response);
 						if(error == null && response === true) {
-							peer.joinedNetworks[networkName] = { rootNode: rootPeer.dht_id }; // mark as joined
+							peer._addJoinedNetwork(rootNode, networkName);
 
 							socket.write(Core.createJsonRpcResponse(moduleReqId, true));
 							console.log('joined network', networkName);
@@ -536,7 +605,7 @@ function getModule(Core) {
 							socket.write(Core.createJsonRpcError(moduleReqId, error, Core.json_errors.internal_error));
 							console.log('error while joining network', networkName);
 						}
-					};
+					});
 
 					console.log('sending stuff to peer', rootPeer.dht_id, 'data', request);
 					peer.node.send(rootPeer.dht_id, makeBuffer(request));
@@ -575,7 +644,7 @@ function getModule(Core) {
 
 			peer.pendingRequests[requestId] = function(result, error) {
 				if(error == null) {
-					delete peer.joinedNetworks[name];
+					peer._leaveNetwork(name);
 
 					socket.write(Core.createJsonRpcResponse(moduleRequestId, true));
 					console.log("Successfully left network", name);
@@ -588,12 +657,13 @@ function getModule(Core) {
 			peer.node.send(network.rootNode, Core.createJsonRpcRequest("leave", [name], requestId));
 		},
 
+		// Query the network for all peers in the network.
 		listPeers: function(networkName) {
 			var peer = this.module.obj;
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
 
-			peer.node.get(networkPeersKey(networkName), function(ok, data) {
+			peer.node.get(networkKey(networkName), function(ok, data) {
 				var peers;
 
 				if(ok) {
