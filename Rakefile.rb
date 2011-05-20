@@ -46,12 +46,8 @@ namespace :build do
       %[make clean] # Clean up. This cannot go with the next cmd, because this may fail if
                     # project is not configured.
 
-      msg "Building node.js libev"
-      doSystem('CXXFLAGS="-fPIC" CFLAGS="-fPIC" python tools/waf-light --product-type=deps/libev/ configure build')
-
-      msg "Building node.js"
-      doSystem('./configure')
-      doSystem('make')
+      msg "Building node.js and libev"
+      doSystem('CXXFLAGS="-fPIC" CFLAGS="-fPIC" python tools/waf-light configure build')
     end
 
     $node_dir = node_dir
