@@ -1,0 +1,11 @@
+--- wscript	2011-04-23 02:06:25.000000000 +0200
++++ wscript	2011-05-20 20:39:36.000000000 +0200
+@@ -79,7 +79,7 @@
+
+ def build(bld):
+   libev = bld.new_task_gen("cc")
+-  libev.source = 'ev.c'
++  libev.source = [ 'ev.c', 'event.c' ]
+   libev.target = 'ev'
+   libev.name = 'ev'
+   libev.includes = '. ../..'

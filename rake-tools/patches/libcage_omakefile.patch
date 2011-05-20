@@ -1,0 +1,10 @@
+--- OMakefile	2011-05-20 23:04:21.000000000 +0200
++++ OMakefile	2011-05-20 23:11:49.000000000 +0200
+@@ -34,7 +34,6 @@
+
+ if $(equal $(EV), TRUE)
+ 	echo "*** linking with libev ***"
+-	LDFLAGS += -lev
+ 	CXXFLAGS += -DEV_MULTIPLICITY=0
+ 	export
+ else
