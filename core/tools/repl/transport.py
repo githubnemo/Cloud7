@@ -64,8 +64,10 @@ class TransportTcpIpSendReceive(TransportTcpIp):
 		TransportTcpIp.send(self, string)
 
 	def recv(self):
-		val = TransportTcpIp.recv(self)
-		self.receiveLock.release()
+		try:
+			val = TransportTcpIp.recv(self)
+		finally:
+			self.receiveLock.release()
 		return val
 
 	def stop(self):
