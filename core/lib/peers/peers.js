@@ -25,13 +25,15 @@ var querystring = require('querystring');
  *
  * - modify generateRequestId() so once can specify the place to
  *   lookup for already assigned IDs.
+ *
  */
 
 /**
  * global FIXMEs:
  *
  * - calling joinNetwork from the same client twice results in a weird
- *   list structure of DHT[networkKey(network)].
+ *   list structure of DHT[networkPeersKey(network)].
+ *   (Update: Verify, removed duplicate entries)
  */
 
 
@@ -158,6 +160,7 @@ function trackerNetworkCreate(networkName, nodePort, nodeId, responseCallback) {
 }
 
 function networkKey(networkName) { return makeBuffer(networkName); }
+function networkPeersKey(networkName) { return makeBuffer(networkName+"_peers"); }
 
 function makeBuffer(s) { return new Buffer(s.toString()); }
 
@@ -174,9 +177,9 @@ function getModule(Core) {
 
 		console.log('created node:', this.node)
 
-		// Seconds the lifetime is valid in the DHT.
+		// Milliseconds the lifetime is valid in the DHT.
 		// The peerList should be refreshed by the network root.
-		this.peerListLifetime = 20;
+		this.peerListLifetime = 20 * 1000;
 
 		// Mapping of networks created by this node.
 		// { <name>: {
@@ -329,11 +332,11 @@ function getModule(Core) {
 		_addPeerToNetwork: function(networkName, peerId) {
 			var peer = this;
 			var network = peer.networks[networkName];
-			var peerListKey = networkKey(networkName);
+			var peerListKey = networkPeersKey(networkName);
 
 			console.log('_addPeerToNetwork(',networkName,',',peerId,')');
 
-			peer.node.get(peerListKey, function(ok, buffer) {
+			peer.node.get(peerListKey, function(ok, buffers) {
 				if(!ok) {
 					return;
 				}
@@ -341,32 +344,43 @@ function getModule(Core) {
 				var peers = [];
 
 				try {
-					peers = JSON.parse(buffer.toString());
+					peers = JSON.parse(buffers[0].toString());
 				} catch(e) {
 					return;
 				}
 
+				// Ignore already registered peer.
+				if(peers.indexOf(peerId) >= 0) {
+					return;
+				}
+
 				// Add peer to peer list and publish the list
-				var peerList = JSON.stringify( peers.concat(peerId) );
-				peer.node.put(peerListKey, makeBuffer(peerList), peer.peerListLifetime);
+				peer._publishPeerList(networkName, peers.concat(peerId));
 			});
 		},
 
+		// Set DHT[networkPeersKey(networkName)] = JSON(peerList)
+		_publishPeerList: function(networkName, peerList) {
+			var jsonPeerList = JSON.stringify( peerList );
+			this.node.put(networkPeersKey(networkName), makeBuffer(jsonPeerList), peer.peerListLifetime, true);
+		},
+
+		// Remove given peer from DHT[networkPeersKey(networkName)]
 		_removePeerFromNetwork: function(networkName, peerId) {
-			this.node.get(networkKey(networkName), function(ok, data) {
+			this.node.get(networkPeersKey(networkName), function(ok, buffers) {
 				if(!ok) {
 					return;
 				}
 
 				var peers = [];
 				try {
-					peers = JSON.parse(data.toString());
+					peers = JSON.parse(buffers[0].toString());
 				} catch(e) {
 					return;
 				}
 
 				var peerList = peers.filter(function(e) { return e != peerId; });
-				this.put(networkKey(networkName), makeBuffer(JSON.stringify(peerList)), this.peerListLifetime);
+				this._publishPeerList(networkName, peerList);
 			});
 		},
 
@@ -389,7 +403,7 @@ function getModule(Core) {
 				return;
 			}
 
-			peer.node.get(networkKey(networkName), function(ok, data) {
+			peer.node.get(networkPeersKey(networkName), function(ok, buffers) {
 				if(!ok) {
 					return;
 				}
@@ -397,7 +411,7 @@ function getModule(Core) {
 				var peers = [peer.node.id];
 
 				try {
-					peers = JSON.parse(data.toString());
+					peers = JSON.parse(buffers[0].toString());
 				} catch(e) {
 					console.log("Peer list refresher:", e, 'data:', data.toString());
 				}
@@ -405,14 +419,14 @@ function getModule(Core) {
 				var peerList = JSON.stringify(peers);
 
 				// Put the peer list as unique value in the DHT
-				peer.node.put(networkKey(networkName), makeBuffer(peerList), peer.peerListLifetime, true);
+				peer._publishPeerList(networkName, peerList);
 			});
 		},
 
 		// Check the peer list periodically. If it is not existant, it means the
 		// root node is unreachable. Try to overtake the network.
 		_checkPeerList: function(networkName) {
-			this.node.get(networkKey(networkName), function(ok, data) {
+			this.node.get(networkPeersKey(networkName), function(ok, buffers) {
 				if(!ok) {
 					// TODO overtake network
 				} else {
@@ -421,7 +435,7 @@ function getModule(Core) {
 					var peerList = [];
 
 					try {
-						peerList = JSON.parse(data[0].toString());
+						peerList = JSON.parse(buffers[0].toString());
 					} catch(e) {
 						// TODO overtake network
 					}
@@ -663,12 +677,12 @@ function getModule(Core) {
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
 
-			peer.node.get(networkKey(networkName), function(ok, data) {
+			peer.node.get(networkPeersKey(networkName), function(ok, buffers) {
 				var peers;
 
 				if(ok) {
 					try {
-						peers = JSON.parse(data.toString());
+						peers = JSON.parse(buffers[0].toString());
 					} catch(e) {
 						socket.write(Core.createJsonRpcError(moduleRequestId,
 								"listPeers: " + e, Core.json_errors.parse_error));
