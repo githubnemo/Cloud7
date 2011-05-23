@@ -8,7 +8,9 @@ task :default => [ "build:all" ]
 $root_dir = Dir.pwd
 $temp_dir = Dir.pwd + "/_temp"
 
-
+####
+# Initialization
+####
 
 task :init do
   requirement('patch', :binary)
@@ -23,9 +25,14 @@ task :init do
   Dir.chdir($temp_dir)
 end
 
-namespace :build do
 
-  task :node => :init do
+####
+# Node related
+####
+
+namespace :node do
+
+  task :build => :init do
     msg "Downloading node source"
 
     if ( not File.exists?('node-latest.tar.gz') or not isValidArchive('node-latest.tar.gz') )
@@ -59,7 +66,29 @@ namespace :build do
     Dir.chdir('../')
   end
 
-  task :libcage => [ :init, :node ] do
+
+  task :clean do
+    node_dir = getNodeDir()
+
+    if Dir.exists?(node_dir)
+      Dir.chdir(node_dir)
+      doSystem("make clean")
+    else
+      error "Node directory does not exist yet (#{node_dir})"
+    end
+
+  end
+
+end
+
+
+####
+# libcage related
+####
+
+namespace :libcage do
+
+  task :build => [ :init, "node:build" ] do
     msg "Building libcage"
 
     doSystem('git clone git://github.com/githubnemo/libcage.git libcage') unless
@@ -77,18 +106,32 @@ namespace :build do
     doSystem("omake CXXFLAGS='-I#{node_dir}/deps/libev/ -fPIC' LDFLAGS='#{node_dir}/build/default/deps/libev/ev_1.o #{node_dir}/build/default/deps/libev/event_1.o' EV=TRUE")
   end
 
-  task :all => [ :init, :node, :libcage ] do
-
-    msg "All stuff built."
-
+  task :clean do
+    libcage_dir = "#{$temp_dir}/libcage"
+    if Dir.exists?(libcage_dir)
+      Dir.chdir(libcage_dir)
+      doSystem("make clean")
+    else
+      error "libcage directory does not exist yet (#{libcage_dir})"
+    end
   end
 
-end # Namespace :build
+end # Namespace :libcage
 
 
+####
+# Convenience namespace
+####
 
-task :clean do
-  node_dir = getNodeDir()
-  doSystem("cd #{node_dir}; make clean")
-  doSystem("cd #{$temp_dir}/libcage; make clean")
+namespace :build do
+
+  task :all => [ :init, "node:build", "libcage:build" ] do
+    msg "All stuff built"
+  end
+
+  task :clean => [ "node:clean", "libcage:clean" ] do
+    msg "Cleaned all targets"
+  end
+
 end
+
