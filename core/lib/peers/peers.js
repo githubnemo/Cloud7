@@ -26,6 +26,10 @@ var querystring = require('querystring');
  * - modify generateRequestId() so once can specify the place to
  *   lookup for already assigned IDs.
  *
+ * - NETWORK JOINED EVENT
+ *
+ * - Events in general
+ *
  */
 
 /**
@@ -174,6 +178,7 @@ function trackerNetworkCreate(networkName, nodePort, nodeId, responseCallback) {
 function networkKey(networkName) { return makeBuffer(networkName); }
 function networkPeersKey(networkName) { return makeBuffer(networkName+"_peers"); }
 
+
 function makeBuffer(s) { return new Buffer(s.toString()); }
 
 
@@ -235,14 +240,12 @@ function getModule(Core) {
 
 			function handleResponse(jsonData) {
 				if(peer.pendingRequests[jsonData.id] === undefined) {
-					node.send(from, makeBuffer(Core.createJsonRpcError(jsonData.id,
-												'Unexpected response: '+id,
-												Core.json_errors.invalid_request)));
-					console.log('Invalid response',jsonData,'from',from);
-					return;
+					// It's not for us, fire an event
+					Core.callRpcMethodLocal("Core.fireEvent", [ "Peers.responseReceived", [from, jsonData] ]);
+				} else {
+					// It's for us, handle it
+					peer.pendingRequests[jsonData.id](jsonData.result, jsonData.error);
 				}
-
-				peer.pendingRequests[jsonData.id](jsonData.result, jsonData.error);
 			}
 
 			// ------------------------------------
@@ -280,6 +283,7 @@ function getModule(Core) {
 													'Not my network: '+networkName,
 													Core.json_errors.internal_error)));
 					}
+
 				// Open network leave.
 				} else if(jsonData.method === "leave") {
 					var networkName = jsonData.params[0];
@@ -292,10 +296,15 @@ function getModule(Core) {
 						node.send(from, makeBuffer(Core.createJsonRpcResponse(jsonData.id, true)));
 						peer._removePeerFromNetwork(networkName, from);
 					}
+
 				// Peer echo, return the strings send
 				} else if(jsonData.method === "echo") {
 					node.send(from, makeBuffer(
 								Core.createJsonRpcResponse(jsonData.id, params.join(' '))));
+
+				// Dispatch to other modules.
+				} else {
+					Core.callRpcMethodLocal("Core.fireEvent", ["Peers.messageReceived", [from, jsonData]]);
 				}
 			}
 
@@ -329,8 +338,7 @@ function getModule(Core) {
 	PeerModule.prototype = {
 
 		// ------------------------------------
-		// Unexported (TODO) helper
-		// Don't call them from the outside!
+		// Unexported helper
 		// ------------------------------------
 
 		// Add handler which waits for the given requestId and gets executed.
@@ -397,8 +405,10 @@ function getModule(Core) {
 		},
 
 
-		_refreshPeerList: function(peer, networkName) {
+		_refreshNetworkInfo: function(peer, networkName) {
 			// Refresh the peer list in the DHT.
+			// Refresh the network key.
+			//
 			// This method is called periodically.
 			//
 			// TODO discuss: usage of locally cached peers?
@@ -414,6 +424,10 @@ function getModule(Core) {
 						networkName, ": network is undefined.");
 				return;
 			}
+
+			// Register the network in the DHT.
+			// The node to speak with for this network is me.
+			peer.node.put(networkKey(name), makeBuffer(this.node.id), this.peerListLifetime);
 
 			peer.node.get(networkPeersKey(networkName), function(ok, buffers) {
 				if(!ok) {
@@ -465,17 +479,17 @@ function getModule(Core) {
 		// TODO write the token in some file to restore it after client restart.
 		_addNetwork: function(name, token, protected) {
 			// Add peer list refreshing service
-			var intervalId = setInterval(this._refreshPeerList, this.peerListLifetime * 0.8, this, name);
+			var intervalId = setInterval(this._refreshNetworkInfo, this.peerListLifetime * 0.8, this, name);
 
-			// TODO:  register network under a 'network' key in the DHT so the network can be discovered
-			// TODO:: without the help of the tracker. The value should be another key which is unique
-			// TODO:: and points to the root node's id.
-
+			// Register locally
 			this.networks[name] = {
 				token: token,
 				protected: false,
 				peerInterval: intervalId
 			};
+
+			// Call initially
+			this._refreshNetworkInfo(this, name);
 		},
 
 		// Add joined network to local network cache.
@@ -650,6 +664,7 @@ function getModule(Core) {
 			});
 		},
 
+
 		// ------------------------------------
 		// DHT interaction
 		// ------------------------------------
@@ -683,6 +698,45 @@ function getModule(Core) {
 			peer.node.send(network.rootNode, Core.createJsonRpcRequest("leave", [name], requestId));
 		},
 
+
+		// Store a key with data in the DHT
+		DHTput: function(key, data) {
+			var peer = this.module.obj;
+
+			// TODO: check if it's already a buffer
+
+			peer.node.put(makeBuffer(key), makeBuffer(data));
+
+			this.socket.write(createJsonRpcResponse(this.requestId, true));
+		},
+
+
+		// Retrieve a key from the DHT.
+		// Retrieved values are converted to string to be compatible with JSON RPC.
+		DHTget: function(key) {
+			var peer = this.module.obj;
+			var moduleRequestId = this.requestId;
+			var socket = this.socket;
+
+			peer.node.get(makeBuffer(key), function(ok, results) {
+				for(var i=0; i < results.length; i++) {
+					results[i] = results[i].toString();
+				}
+				socket.write(createJsonRpcResponse(moduleRequestId, results));
+			});
+		},
+
+
+		// Send a message (string) to a peer.
+		sendMessage: function(peerId, message) {
+			var peer = this.module.obj;
+
+			peer.node.send(peerId, makeBuffer(message));
+
+			this.socket.write(Core.createJsonRpcResponse(this.requestId, true));
+		},
+
+
 		// Query the network for all peers in the network.
 		listPeers: function(networkName) {
 			var peer = this.module.obj;
@@ -708,11 +762,31 @@ function getModule(Core) {
 			});
 		},
 
-		getPeerCapabilities: function(networkName, peerId) {},
+		getPeerCapabilities: function(networkName, peerId) {
+		},
+
+
+		// ------------------------------------
+		// Local data interaction
+		// ------------------------------------
+
+		// Return node ID in the DHT
+		getMyId: function() {
+			this.socket.write(Core.createJsonRpcResponse(this.requestId, this.module.obj.node.id));
+		},
+
+
+		// Get a list of joined networks
+		listJoinedNetworks: function() {
+			var peer = this.module.obj;
+
+			this.socket.write(Core.createJsonRpcResponse(this.requestId, Object.keys(peer.joinedNetworks)));
+		},
+
 
 	};
 
 	return new PeerModule();
 }
 
-module.exports = {getModule: getModule};
+module.exports = { getModule: getModule };
