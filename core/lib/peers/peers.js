@@ -47,26 +47,38 @@ function trackerNetworkRequest(networkName, responseCallback) {
 	var options = {
 		host: cloud7tracker,
 		port: 80,
-		// TODO spec says /network/[networkName]/[gatewayIP]
 		path: '/network/' + networkName,
 		method: 'GET',
 	};
 
-	http.get(options, function(res) {
-		res.on('data', function(data) {
-			var peer;
-			try {
-				peer = JSON.parse(data);
-			} catch(e) {
-				return responseCallback(null, e);
-			}
+	route.getDefaultRoute(function(gatewayIP, error) {
+		var gatewayAppendix;
 
-			// XXX keep status? not specified!
-			if(peer.status !== undefined) {
-				responseCallback(null, peer.status);
-			} else {
-				responseCallback(peer, null);
-			}
+		if(error != null) {
+			console.log("trackerNetworkRequest: Error while retrieving gateway IP");
+			gatewayAppendix = "";
+		} else {
+			gatewayAppendix = "/" + gatewayIP;
+		}
+
+		options.path += gatewayAppendix;
+
+		http.get(options, function(res) {
+			res.on('data', function(data) {
+				var peer;
+				try {
+					peer = JSON.parse(data);
+				} catch(e) {
+					return responseCallback(null, e);
+				}
+
+				// XXX keep status? not specified!
+				if(peer.status !== undefined) {
+					responseCallback(null, peer.status);
+				} else {
+					responseCallback(peer, null);
+				}
+			});
 		});
 	});
 }
