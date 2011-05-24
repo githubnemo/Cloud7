@@ -129,6 +129,14 @@ Array.valueOf = function(obj) {
  * Signature: Core(init)
  *
  * Provides the main program logic.
+ *
+ * Also provides access to events / modules for local modules:
+ * - registerLocalModule
+ * - unregisterModule
+ * - getModule
+ * - bindToEvent
+ * - callRemoteMethod
+ *
  */
 function Core(init) {
 	init.apply(this);
@@ -153,6 +161,70 @@ Core.prototype = {
 		delete registeredModules[name];
 	},
 
+	getModule: function(name) {
+		return registeredModules[name];
+	},
+
+	/**
+	 * Signature: callRpcMethodLocal(identifier, params, resultCallback)
+	 *
+	 * resultCallback signature: resultCallback(data)
+	 * 	'data' is tried to be parsed as JSON. If it fails, the data is
+	 * 	wrapped in an JSON RPC error response instead.
+	 *
+	 * Local modules provide methods which are designed to communicate over
+	 * RPC. Local modules don't do that but they should be able to use the
+	 * API. This method enables that.
+	 *
+	 * Example:
+	 *
+	 * 	// from a local module
+	 * 	Core.callRpcMethodLocal("Peers.sendMessage", ["a93c19a9d11c38", "OHAI"], <function#123>);
+	 *
+	 */
+	callRpcMethodLocal: function(identifier, params, resultCallback) {
+		var id = this.generateRequestId();
+
+		var fakeSocket = {
+			write: function(data) {
+				if(resultCallback === undefined) {
+					return;
+				}
+
+				try {
+					var parsed = JSON.parse(data);
+					resultCallback(parsed);
+				} catch(e) {
+					resultCallback(createJsonRpcError(id, [e,data], this.json_errors.parse_error));
+				}
+			}
+		};
+
+		new Dispatcher(this.createJsonRpcRequest(identifer, params, id), fakeSocket, this);
+	},
+
+	/**
+	 * Signature: bindToEvent(identifier, module, method) => Number
+	 *
+	 * Logic of CoreModule#bindToEvent.
+	 *
+	 * Returns the ID of the created event handler.
+	 *
+	 * Example:
+	 * 	bindToEvent("Peers.messageReceived", "FileTransfer", "peerMessageReceived")
+	 */
+	bindToEvent: function(identifier, module, method) {
+		var eventId = eventIdToEvent.addNewEvent(identifier, module, method);
+
+		// Save the events by identifier for easy lookup
+		if( registeredEvents[identifier] === undefined) {
+			registeredEvents[identifier] = Array();
+		}
+
+		registeredEvents[identifier].append(eventId);
+
+		return eventId;
+	},
 
 	// Return an array of method names of obj which don't start with an underscore (_).
 	getMethods: function(obj) {
@@ -170,13 +242,15 @@ Core.prototype = {
 
 
 	/**
-	 * Signature: callRpcMethod(socket, method, params, responseHandler)
+	 * Signature: callRpcMethod(socket, method, params, responseHandler) => Number
 	 *
 	 * responseHandler signature: func(response, error)
 	 *
 	 * The response handler's argument response can be undefined if an
 	 * error occured. In this case, error is !== undefined. If no error
 	 * occured, error is undefined.
+	 *
+	 * error is a JSON RPC 2.0 response error structure.
 	 */
 	callRpcMethod: function(socket, method, params, responseHandler) {
 		var id = this.generateRequestId();
@@ -188,10 +262,20 @@ Core.prototype = {
 		return id;
 	},
 
-	generateRequestId: function () {
+	/**
+	 * Signature: generateRequestId([table]) => Number
+	 *
+	 * Generate a random number which is not yet registered.
+	 *
+	 * If table is given, it is checked if the generated id exists in
+	 * the table (object / hashmap) to generate a new id if it exists.
+	 *
+	 * If table is not given, pendingRequests is used instead.
+	 */
+	generateRequestId: function (table) {
 		for(;;) {
 			var id = Math.floor(Math.random()*Math.pow(2,32));
-			if(pendingRequests[id]) {
+			if((table && table[id]) || pendingRequests[id]) {
 				continue;
 			}
 			return id;
@@ -309,7 +393,7 @@ var CoreModule = {
 			var row = eventIdToEvent[listeners[i]];
 
 			var module = registeredModules[row[1]]
-			var method = module.getMethod(row[2])
+			var method = module.getMethod(row[2], true)
 
 			if(typeof method !== 'function') {
 				console.log("Can't fire event "+name+" to "+module+": No method.");
@@ -326,6 +410,7 @@ var CoreModule = {
 	 * identifier: String
 	 * callbackIdentifier: String
 	 *
+	 * Bind remote module to event.
 	 * Error response if the module in the callbackIdentifier is not loaded
 	 * or the callbackIdentifier is ill-formed.
 	 */
@@ -351,25 +436,23 @@ var CoreModule = {
 			return;
 		}
 
-		var eventId = eventIdToEvent.addNewEvent(identifier, module, method);
-
-		// Save the events by identifier for easy lookup
-		if( registeredEvents[identifier] === undefined) {
-			registeredEvents[identifier] = Array();
-		}
-
-		registeredEvents[identifier].append(eventId);
+		var eventId = this.core.bindToEvent(identifier, module, method);
 
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, eventId));
 	},
 
+	/**
+	 * Signature: unbindFromEvent(eventId) => Boolean
+	 *
+	 * Return true if the event was unbind, otherwise false.
+	 */
 	unbindFromEvent: function(eventId) {
 
 		// TODO check calling module (it shall own the event to unbind it)
 
 		delete eventIdToEvent[eventId];
 
-		// TODO return value
+		this.socket.write(this.core.createJsonRpcResponse(this.requestId, true));
 	}
 
 
@@ -417,7 +500,7 @@ var Module = function(name, methods) {
 };
 
 Module.prototype = {
-	getMethod: function(name) { throw new Execption("getMethod on raw module."); }
+	getMethod: function(name, local) { throw new Execption("getMethod on raw module."); }
 };
 
 
@@ -435,8 +518,17 @@ var LocalModule = function(name, methods, obj) {
 };
 
 LocalModule.prototype = {
-	getMethod: function(name) {
-		if(this.methods.has(name)) {
+
+	/**
+	 * Signature: getMethod(name, [local])
+	 *
+	 * Return the method identified by name.
+	 *
+	 * If boolean local is true, the exported methods list (this.methods) is ignored.
+	 * See CoreModule.fireEvent for use case.
+	 */
+	getMethod: function(name, local) {
+		if(local || this.methods.has(name)) {
 			// TODO check for evilness
 			return eval("this.obj."+name);
 		}
@@ -461,10 +553,15 @@ var RpcModule = function(name, methods, socket) {
 RpcModule.prototype = {
 
 	/**
-	 * Signature: getMethod(name)
+	 * Signature: getMethod(name, [local])
 	 *
 	 * Builds a proxy method which makes an RPC call to the requested method.
 	 * The result is written back to the requesting socket.
+	 *
+	 * The boolean local flag is used to determine if this call is used
+	 * for local usage (that is, using for calling an event handler for example)
+	 * or not. If local is true, the internal methods list is not checked for
+	 * the calling method, allowing unexported methods to be called.
 	 *
 	 * Example:
 	 * IN: {"method":"Peers.get","id":123,"params":[]}
@@ -477,10 +574,11 @@ RpcModule.prototype = {
 	 *	returned.
 	 * OUT: {"result":"getet","id":123,"error":null}
 	 *
+	 *
 	 * @return function 	Proxy method for handling the request.
 	 */
-	getMethod: function(name) {
-		if(this.methods.has(name)) {
+	getMethod: function(name, local) {
+		if(local || this.methods.has(name)) {
 			var module = this;
 			return function() {
 				// Proxy method
@@ -521,6 +619,7 @@ RpcModule.prototype = {
  *	- this.requestId
  *	- this.socket
  *	- this.core
+ *	- receiving module
  *	The called function receives the parameters passed
  *	by the request.
  *
@@ -609,6 +708,7 @@ Dispatcher.prototype = {
  */
 var core = new Core(function() {
 
+	// nodejs modules
 	var net = require('net');
 	var conf = require('./lib/conf/conf.js');
 	var peers = require('./lib/peers/peers.js');
