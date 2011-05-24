@@ -710,20 +710,34 @@ var core = new Core(function() {
 
 	// nodejs modules
 	var net = require('net');
+	var carrier = require('./deps/carrier/lib/carrier');
+
+	// Local modules
 	var conf = require('./lib/conf/conf.js');
 	var peers = require('./lib/peers/peers.js');
+	var filetransfer = require('./lib/filetransfer/filetransfer.js');
 
 	var core = this;
 
 	this.registerLocalModule("Core", CoreModule);
 	this.registerLocalModule("Config", conf.getModule(this));
 	this.registerLocalModule("Peers", peers.getModule(this));
+	this.registerLocalModule("FileTransfer", filetransfer.getModule(this));
 
 
 	// Setup RPC server
 	this.server = net.createServer(function (socket) {
 
-		socket.on('data', function(data) {
+		socket.on('error', function(error) {
+			console.log("ERROR occured in socket comminication:", error);
+		});
+
+		carrier.carry(socket, function(data) {
+
+			if(!socket.writable || !socket.readable) {
+				console.log("Socket closed, stopping handler.");
+				return;
+			}
 
 			// Overwrite write for debugging/logging purposes.
 			socket.write = function(that, write) {
