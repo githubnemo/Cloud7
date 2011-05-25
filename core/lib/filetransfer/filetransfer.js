@@ -20,8 +20,15 @@ function getModule(Core) {
 		this.peerResponseEventId = Core.bindToEvent("Peers.responseReceived", "FileTransfer", "_peersResponseReceived");
 		this.joinEventId = Core.bindToEvent("Peers.joinedNetwork", "FileTransfer", "_networkJoined");
 
+		// Folder which is public for all other peers
 		this.shareFolder = "/home/nemo/Downloads/"
 
+		// Shared/Public files
+		this.publicFiles = this._getPublicFiles();
+
+		// Setup a watcher which refreshes this.publicFiles whenever
+		// something in the share folder changes.
+		this._startPublicFileWatcher();
 
 		// Memory of download requests issued by us.
 		// { id: {
@@ -44,6 +51,7 @@ function getModule(Core) {
 		// Table of active servers for files
 		// { <file> : <server obj> }
 		this.activeServers = {};
+
 	}
 
 
@@ -133,24 +141,73 @@ function getModule(Core) {
 		// Unexported local methods
 		// ------------------------------------
 
+		// Watch share folder for changes and refresh the public
+		// files struct then.
+		_startPublicFileWatcher: function() {
+			var self = this;
 
-		// Serve the file given
-		_startFileServer: function(fileLocation) {
+			return fs.watchFile(this.shareFolder, function(curr,prev) {
+				console.log("Refreshing public files...");
+				self.publicFiles = self._getPublicFiles();
+			});
+		},
+
+
+		// Serve the file given.
+		//
+		// addressCallback signature: addressCallback(ip, port)
+		//
+		// After successful creation, addressCallback is called with the
+		// address data. If creation fails, ip and port is null.
+		//
+		_startFileServer: function(fileLocation, addressCallback) {
 			if(this.activeServers[fileLocation]) {
 				return;
 			}
 
 			// TODO limit max open connections
-			var server = net.createServer({}, function(con) {
-				// TODO dump file into con
+			var server = net.createServer({}, function(socket) {
+				// TODO dump file into socket
 			});
 
-			this.activeServers[fileLocation] = server;
+			// listen on random port
+			server.listen(function() {
+				var address = server.address();
+				console.log("opened file server on", address);
+
+				this.activeServers[fileLocation] = server;
+				addressCallback(address.ip, address.port);
+			});
 		},
 
 
+		// Returns a list of objects which represent the files this node
+		// shares with others.
+		//
+		// The structure of the object is as follows:
+		// { file: <filename>, folder: <path to folder> }
 		_getPublicFiles: function() {
-			// TODO
+
+			function readPublicPaths(folder) {
+				var publicFiles = [];
+
+				files = fs.readdirSync(folder);
+
+				for(var i=0; i < files.length; i++) {
+					var path = folder + "/" + files[i];
+					var stat = fs.stat(path).isFile()
+
+					if(stat.isFile()) {
+						publicFiles = publicFiles.unshift({ file: files[i], folder: folder });
+					} else {
+						publicFiles = publicFiles.concat( readPublicPaths(path) );
+					}
+				}
+
+				return publicFiles;
+			}
+
+			return readPublicPaths(this.shareFolder);
 		},
 
 
