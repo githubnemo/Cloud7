@@ -61,6 +61,8 @@ class TransportTcpIpSendReceive(TransportTcpIp):
 
 	def send(self, string):
 		self.receiveLock.acquire()
+		if string[-1] != "\n":
+			string = string + "\n"
 		TransportTcpIp.send(self, string)
 
 	def recv(self):
