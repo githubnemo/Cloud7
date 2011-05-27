@@ -184,6 +184,7 @@ Core.prototype = {
 	 */
 	callRpcMethodLocal: function(identifier, params, resultCallback) {
 		var id = this.generateRequestId();
+		var self = this;
 
 		var fakeSocket = {
 			write: function(data) {
@@ -191,16 +192,20 @@ Core.prototype = {
 					return;
 				}
 
+				var parsed = null;
+
 				try {
-					var parsed = JSON.parse(data);
-					resultCallback(parsed);
+					parsed = JSON.parse(data);
 				} catch(e) {
-					resultCallback(createJsonRpcError(id, [e,data], this.json_errors.parse_error));
+					resultCallback(self.createJsonRpcError(id, [e,data], self.json_errors.parse_error));
+					return;
 				}
+
+				resultCallback(parsed);
 			}
 		};
 
-		new Dispatcher(this.createJsonRpcRequest(identifer, params, id), fakeSocket, this);
+		new Dispatcher(JSON.parse(this.createJsonRpcRequest(identifier, params, id)), fakeSocket, this);
 	},
 
 	/**
