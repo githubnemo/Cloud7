@@ -26,7 +26,7 @@ var querystring = require('querystring');
  * - modify generateRequestId() so once can specify the place to
  *   lookup for already assigned IDs.
  *
- * - NETWORK JOINED EVENT
+ * - NETWORK JOINED/LEFT EVENT
  *
  * - Events in general
  *
@@ -497,6 +497,8 @@ function getModule(Core) {
 		_addJoinedNetwork: function(rootPeer, networkName) {
 			var intervalId = setInterval(this._checkPeerList, this.peerListLifetime, networkName);
 
+			// TODO send joined event
+
 			// mark as joined
 			this.joinedNetworks[networkName] = {
 				rootNode: rootPeer.dht_id,
@@ -512,6 +514,8 @@ function getModule(Core) {
 			}
 
 			var network = this.joinedNetworks[networkName];
+
+			// TODO send left event
 
 			delete this.joinedNetworks[networkName];
 
@@ -700,12 +704,12 @@ function getModule(Core) {
 
 
 		// Store a key with data in the DHT
-		DHTput: function(key, data) {
+		DHTput: function(key, data, ttl) {
 			var peer = this.module.obj;
 
 			// TODO: check if it's already a buffer
 
-			peer.node.put(makeBuffer(key), makeBuffer(data));
+			peer.node.put(makeBuffer(key), makeBuffer(data), ttl);
 
 			this.socket.write(createJsonRpcResponse(this.requestId, true));
 		},
@@ -763,6 +767,7 @@ function getModule(Core) {
 		},
 
 		getPeerCapabilities: function(networkName, peerId) {
+			// TODO
 		},
 
 
@@ -777,7 +782,7 @@ function getModule(Core) {
 
 
 		// Get a list of joined networks
-		listJoinedNetworks: function() {
+		getJoinedNetworks: function() {
 			var peer = this.module.obj;
 
 			this.socket.write(Core.createJsonRpcResponse(this.requestId, Object.keys(peer.joinedNetworks)));
