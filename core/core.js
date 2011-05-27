@@ -223,7 +223,7 @@ Core.prototype = {
 
 		// Save the events by identifier for easy lookup
 		if( registeredEvents[identifier] === undefined) {
-			registeredEvents[identifier] = Array();
+			registeredEvents[identifier] = [];
 		}
 
 		registeredEvents[identifier].append(eventId);
@@ -393,6 +393,10 @@ var CoreModule = {
 	 */
 	fireEvent: function(name, data) {
 		var listeners = registeredEvents[name];
+
+		if(listeners === undefined) {
+			return;
+		}
 
 		for(var i=0; i < listeners.length; i++) {
 			var row = eventIdToEvent[listeners[i]];
@@ -649,7 +653,7 @@ var Dispatcher = function(message, socket, core) {
 	} else if(this.core.validateJsonRpcResponse(message)) {
 		this.routeResponse(message);
 	} else {
-		console.log("Invalid JSON-RPC 2.0 Data:", message);
+		console.log("Core.Dispatcher: Invalid JSON-RPC 2.0 Data:", message, "type:", typeof message);
 		return false;
 	}
 
@@ -683,7 +687,7 @@ Dispatcher.prototype = {
 		var method = module.getMethod(methodName);
 
 		if(typeof method !== 'function') {
-			console.log("Unknown method in RPC request:",methodName);
+			console.log("Unknown method in RPC request:",methodName, method, module);
 			this.socket.write(this.core.createJsonRpcError(
 				request.id, "Unknown method "+methodName, this.core.json_errors.method_not_found));
 			return;
@@ -729,6 +733,7 @@ var core = new Core(function() {
 	this.registerLocalModule("Peers", peers.getModule(this));
 	this.registerLocalModule("FileTransfer", filetransfer.getModule(this));
 
+	this.getModule("Core").obj.fireEvent("Core.initDone", []);
 
 	// Setup RPC server
 	this.server = net.createServer(function (socket) {
