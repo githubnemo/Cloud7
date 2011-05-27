@@ -1,4 +1,5 @@
 var net = require('net');
+var fs = require('fs');
 var crypto = require('crypto');
 
 // Hash for a specific file in the network
@@ -19,16 +20,21 @@ function getModule(Core) {
 		this.peerRequestEventId = Core.bindToEvent("Peers.messageReceived", "FileTransfer", "_peersMessageReceived");
 		this.peerResponseEventId = Core.bindToEvent("Peers.responseReceived", "FileTransfer", "_peersResponseReceived");
 		this.joinEventId = Core.bindToEvent("Peers.joinedNetwork", "FileTransfer", "_networkJoined");
+		this.leaveEventId = Core.bindToEvent("Peers.leftNetwork", "FileTransfer", "_networkLeft");
 
 		// Folder which is public for all other peers
 		this.shareFolder = "/home/nemo/Downloads/"
 
 		// Shared/Public files
+		// { file: <filename>, folder: <path to folder> }
 		this.publicFiles = this._getPublicFiles();
+
+		console.log("I share", this.publicFiles.length, "files in", this.shareFolder);
 
 		// Setup a watcher which refreshes this.publicFiles whenever
 		// something in the share folder changes.
 		this._startPublicFileWatcher();
+
 
 		// Memory of download requests issued by us.
 		// { id: {
@@ -52,6 +58,9 @@ function getModule(Core) {
 		// { <file> : <server obj> }
 		this.activeServers = {};
 
+		// Everything should be set up. Start publishing.
+		// TODO fetch active networks (if any) and start publishing
+		//this._startPublishingFileList();
 	}
 
 
@@ -120,7 +129,12 @@ function getModule(Core) {
 
 
 		_networkJoined: function(networkName) {
-			// TODO publish files there
+			this._startPublishingFileList(networkName);
+		},
+
+
+		_networkLeft: function(networkName) {
+			this._stopPublishingFileList(networkName);
 		},
 
 
@@ -128,12 +142,40 @@ function getModule(Core) {
 		// Open a server which serves the requested file (if found)
 		// and send the data to the client.
 		_answerFileRequest: function(senderId, request) {
-			// TODO
+			if(request.params.length != 1) {
+				var error = Core.createJsonRpcError(request.id, "Invalid parameter count", Core.json_errors.invalid_params);
+				Core.callRpcMethodLocal("Peers.sendMessage", [senderId, error]);
+
+				return;
+			}
+
+			var file = request.params[0];
+
+			if(this.publicFiles[file] === undefined) {
+				var error = Core.createJsonRpcError(request.id, "File not found", Core.json_errors.internal_error);
+				Core.callRpcMethodLocal("Peers.sendMessage", [senderId, error]);
+
+				return;
+			}
+
+			this._startFileServer(file, function(ip, port) {
+				if(ip == null || port == null) {
+					// Error occured
+					console.log("Error while starting file server");
+					// TODO handle error
+					return;
+				}
+
+				var response = Core.createJsonRpcResponse(request.id, serverObj);
+
+				Core.callRpcMethodLocal("Peers.sendMessage", [senderId, response]);
+			});
 		},
 
 
 		_answerListFilesRequest: function(senderId, request) {
-			// TODO
+			var response = Core.createJsonRpcResponse(request.id, Object.keys(this.publicFiles));
+			Core.callRpcMethodLocal("Peers.sendMessage", [senderId, response]);
 		},
 
 
@@ -191,14 +233,14 @@ function getModule(Core) {
 			function readPublicPaths(folder) {
 				var publicFiles = [];
 
-				files = fs.readdirSync(folder);
+				var files = fs.readdirSync(folder);
 
 				for(var i=0; i < files.length; i++) {
 					var path = folder + "/" + files[i];
-					var stat = fs.stat(path).isFile()
+					var stat = fs.statSync(path);
 
 					if(stat.isFile()) {
-						publicFiles = publicFiles.unshift({ file: files[i], folder: folder });
+						publicFiles.unshift({ file: files[i], folder: folder });
 					} else {
 						publicFiles = publicFiles.concat( readPublicPaths(path) );
 					}
@@ -211,21 +253,36 @@ function getModule(Core) {
 		},
 
 
+		// Publish public file list in the DHT
 		_startPublishingFileList: function(networkName) {
 			self = this;
 
+			console.log("_startPublishingFileList:", networkName)
+
 			function fileListRefresher() {
-				// TODO iterate over public files, publish them in DHT
-				/*Core.callRpcMethodLocal("Peers.getNetworkFileHash
-				Core.callRpcMethodLocal("Peers.DHTput", hash, peerId); */
+				console.log("Refreshing file list in DHT.");
+
+				Core.callRpcMethodLocal("Peers.getMyId", [], function(response) {
+					var peerId = response.result;
+
+					console.log("Got peerId", peerId, networkName);
+
+					for(var i=0; i < self.publicFiles.length; i++) {
+						var fileObj = self.publicFiles[i];
+
+						var fileHash = networkFileHash(networkName, fileObj.file);
+						Core.callRpcMethodLocal("Peers.DHTput", [fileHash, peerId, self.fileListTTL / 1000]);
+					}
+				});
 			}
 
-			this.publishingNetworks[networkName] = setInterval(fileListRefresher, this.fileListTTL);
+			self.publishingNetworks[networkName] = setInterval(fileListRefresher, self.fileListTTL);
 
 			fileListRefresher();
 		},
 
 
+		// Stop doing what _startPublishingFileList started.
 		_stopPublishingFileList: function(networkName) {
 			clearInterval(this.publishingNetworks[networkName]);
 		},
@@ -310,7 +367,7 @@ function getModule(Core) {
 			var moduleRequestId = this.requestId;
 			var self = this.module.obj;
 
-			Core.callRpcMethodLocal("Peers.joinedNetworks", [], function(response) {
+			Core.callRpcMethodLocal("Peers.getJoinedNetworks", [], function(response) {
 
 				if(response.error !== undefined) {
 
@@ -356,6 +413,7 @@ function getModule(Core) {
 
 		// List files from peers in the network
 		listFiles: function(networkName) {
+			// TODO
 		},
 	};
 
