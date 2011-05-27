@@ -427,7 +427,7 @@ function getModule(Core) {
 
 			// Register the network in the DHT.
 			// The node to speak with for this network is me.
-			peer.node.put(networkKey(name), makeBuffer(this.node.id), this.peerListLifetime);
+			peer.node.put(networkKey(networkName), makeBuffer(peer.node.id), peer.peerListLifetime);
 
 			peer.node.get(networkPeersKey(networkName), function(ok, buffers) {
 				if(!ok) {
