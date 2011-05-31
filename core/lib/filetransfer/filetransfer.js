@@ -23,6 +23,7 @@ function getModule(Core) {
 		this.leaveEventId = Core.bindToEvent("Peers.leftNetwork", "FileTransfer", "_networkLeft");
 
 		// Folder which is public for all other peers
+		// TODO configurable somehow
 		this.shareFolder = "/home/nemo/Downloads/"
 
 		// Shared/Public files
@@ -64,7 +65,7 @@ function getModule(Core) {
 	}
 
 
-	// A -> B [getFile(Foo)]
+	// A -> B [getFile(Foo, <networkName>)]
 	// B -> A [{ip: <ip>, port: <port>}]
 	//
 	// A [download from ip/port until finished].
@@ -99,7 +100,7 @@ function getModule(Core) {
 
 			switch(jsonRpcRequest.method) {
 				case "FileTransfer.getFile":
-					// FileTransfer.getFile(fileName)
+					// FileTransfer.getFile(fileName, networkName)
 					self._answerFileRequest(senderId, jsonRpcRequest);
 					break;
 
@@ -138,25 +139,34 @@ function getModule(Core) {
 		},
 
 
+		_getPublicFile: function(networkName, fileName) {
+			// TODO make depending on networks
+			return this.publicFiles[fileName];
+		},
+
 
 		// Open a server which serves the requested file (if found)
 		// and send the data to the client.
 		_answerFileRequest: function(senderId, request) {
-			if(request.params.length != 1) {
+			if(request.params.length != 2) {
 				var error = Core.createJsonRpcError(request.id, "Invalid parameter count", Core.json_errors.invalid_params);
 				Core.callRpcMethodLocal("Peers.sendMessage", [senderId, error]);
 
 				return;
 			}
 
-			var file = request.params[0];
+			var filename = request.params[0];
+			var network = request.params[1];
 
-			if(this.publicFiles[file] === undefined) {
+			var file = this._getPublicFile(network, filename);
+
+			if(file === undefined) {
 				var error = Core.createJsonRpcError(request.id, "File not found", Core.json_errors.internal_error);
 				Core.callRpcMethodLocal("Peers.sendMessage", [senderId, error]);
 
 				return;
 			}
+
 
 			this._startFileServer(file, function(ip, port) {
 				if(ip == null || port == null) {
@@ -190,6 +200,7 @@ function getModule(Core) {
 
 			return fs.watchFile(this.shareFolder, function(curr,prev) {
 				console.log("Refreshing public files...");
+				// TODO different networks should have different public files
 				self.publicFiles = self._getPublicFiles();
 			});
 		},
@@ -209,7 +220,17 @@ function getModule(Core) {
 
 			// TODO limit max open connections
 			var server = net.createServer({}, function(socket) {
-				// TODO dump file into socket
+				console.log("In serve file for",fileLocation);
+				fs.readFile(fileLocation, function (err, data) {
+					if (err) {
+						console.log("Error while reading file to send", fileLocation, err);
+					} else {
+						console.log("Starting to transmit file",fileLocation);
+						socket.write(data);
+						socket.end();
+						console.log("Transmitted file",fileLocation);
+					}
+				});
 			});
 
 			// listen on random port
@@ -224,10 +245,13 @@ function getModule(Core) {
 
 
 		// Returns a list of objects which represent the files this node
-		// shares with others.
+		// shares with others in the given network.
 		//
 		// The structure of the object is as follows:
 		// { file: <filename>, folder: <path to folder> }
+		//
+		// TODO:  different networks should have different files,
+		// TODO:: maybe with share folders configureable per network
 		_getPublicFiles: function() {
 
 			function readPublicPaths(folder) {
@@ -325,10 +349,25 @@ function getModule(Core) {
 
 
 		// Handles the answer of uploading peer
-		_downloadResposeHandler: function(id, ip, port) {
+		_downloadResponseHandler: function(id, ip, port) {
 			var downloadData = this.ownDownloadRequests[id];
 
-			// TODO download file from ip/port
+			var path = downloadData.destinationPath;
+			var stream = fs.createWriteStream(path);
+
+			var con = net.createConnection(port, ip);
+
+			console.log('start downloading file to',path,'from',ip,port);
+
+			con.on('data', function(data) {
+				stream.write(data);
+			});
+
+			con.on('end', function() {
+				stream.end();
+				stream.destroy();
+				console.log('finished downloading file to',path,'from',ip,port);
+			});
 		},
 
 
@@ -341,9 +380,9 @@ function getModule(Core) {
 		_startDownloadFileFromPeer: function(networkName, peerId, fileName, destinationPath, callback) {
 			var requestId = Core.generateRequestId(this.ownDownloadRequests);
 
-			var downloadRequest = createJsonRpcRequest("FileTransfer.getFile", [fileName], requestId);
+			var downloadRequest = createJsonRpcRequest("FileTransfer.getFile", [fileName, networkName], requestId);
 
-			this._registerOwnDownloadRequest(requestId, networkName, peerId, fileName, destinationPath, _downloadResposeHandler);
+			this._registerOwnDownloadRequest(requestId, networkName, peerId, fileName, destinationPath, _downloadResponseHandler);
 
 			Core.callRpcMethodLocal("Peers.sendMessage", [peerId, downloadRequest]);
 
@@ -413,7 +452,17 @@ function getModule(Core) {
 
 		// List files from peers in the network
 		listFiles: function(networkName) {
-			// TODO
+			Core.callRpcMethodLocal("Peers.listPeers", [], function(response) {
+				// TODO handle error
+
+				var peerList = response.result;
+
+				for(var i=0; i < peerList.length; i++) {
+					var peerId = peerList[i];
+					// TODO everything for listing files
+					Core.callRpcMethodLocal("Peers.sendMessage", [peerId, fileQuery]);
+				}
+			});
 		},
 	};
 
