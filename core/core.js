@@ -754,7 +754,12 @@ var core = new Core(function() {
 				return function() {
 					var args = Array.valueOf(arguments);
 					args[args.length] = function() { console.log("OUT:",args); };
-					write.apply(that, args);
+
+					try {
+						write.apply(that, args);
+					} catch(e) {
+						console.log('Error while writing to RPC socket',error);
+					}
 				}
 			}(socket, socket.write);
 
