@@ -371,6 +371,7 @@ var CoreModule = {
 
 	registerModule: function(name, methods) {
 		var success = this.core.registerRpcModule(name, methods, this.socket);
+		// TODO return security token to sender
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, success));
 	},
 
@@ -402,8 +403,8 @@ var CoreModule = {
 		for(var i=0; i < listeners.length; i++) {
 			var row = eventIdToEvent[listeners[i]];
 
-			var module = registeredModules[row[1]]
-			var method = module.getMethod(row[2], true)
+			var module = registeredModules[row[1]];
+			var method = module.getMethod(row[2], true);
 
 			if(typeof method !== 'function') {
 				console.log("Can't fire event "+name+" to "+module+": No method.");
