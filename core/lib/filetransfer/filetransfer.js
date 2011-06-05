@@ -261,7 +261,12 @@ function getModule(Core) {
 
 				for(var i=0; i < files.length; i++) {
 					var path = folder + "/" + files[i];
-					var stat = fs.statSync(path);
+					var stat = null;
+					try {
+						stat = fs.statSync(path);
+					} catch(e) {
+						continue;
+					}
 
 					if(stat.isFile()) {
 						publicFiles.unshift({ file: files[i], folder: folder });
