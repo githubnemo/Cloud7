@@ -239,7 +239,7 @@ function getModule(Core) {
 
 			var node = this;
 
-			console.log(node.id, 'received', data, 'from', from);
+			console.log(node.id, 'received', data.toString(), 'from', from);
 
 			// ------------------------------------
 			// Route responses to their handlers
@@ -355,6 +355,7 @@ function getModule(Core) {
 			this.pendingRequests[requestId] = handler;
 		},
 
+
 		// Add peer to network list.
 		// This node must be the creator of the network to do this.
 		_addPeerToNetwork: function(networkName, peerId) {
@@ -387,11 +388,14 @@ function getModule(Core) {
 			});
 		},
 
+
 		// Set DHT[networkPeersKey(networkName)] = JSON(peerList)
 		_publishPeerList: function(networkName, peerList) {
 			var jsonPeerList = JSON.stringify( peerList );
-			this.node.put(networkPeersKey(networkName), makeBuffer(jsonPeerList), peer.peerListLifetime, true);
+			console.log("_publishPeerList",networkName,jsonPeerList);
+			this.node.put(networkPeersKey(networkName), makeBuffer(jsonPeerList), this.peerListLifetime, true);
 		},
+
 
 		// Remove given peer from DHT[networkPeersKey(networkName)]
 		_removePeerFromNetwork: function(networkName, peerId) {
@@ -425,7 +429,7 @@ function getModule(Core) {
 
 			var network = peer.networks[networkName];
 
-			console.log('refreshing peer list for', networkName);
+			console.log('refreshing network info for', networkName);
 
 			if(network === undefined) {
 				console.log("Peer list refresher: Error while refreshing for",
@@ -435,32 +439,32 @@ function getModule(Core) {
 
 			// Register the network in the DHT.
 			// The node to speak with for this network is me.
-			peer.node.put(networkKey(networkName), makeBuffer(peer.node.id), peer.peerListLifetime);
+			peer.node.put(networkKey(networkName), makeBuffer(peer.node.id), peer.peerListLifetime / 1000);
 
 			peer.node.get(networkPeersKey(networkName), function(ok, buffers) {
-				if(!ok) {
-					return;
-				}
-
 				var peers = [peer.node.id];
 
-				try {
-					peers = JSON.parse(buffers[0].toString());
-				} catch(e) {
-					console.log("Peer list refresher:", e, 'data:', data.toString());
+				if(ok) {
+					try {
+						peers = JSON.parse(buffers[0].toString());
+					} catch(e) {
+						console.log("Peer list refresher:", e, 'data:', data.toString());
+					}
 				}
 
-				var peerList = JSON.stringify(peers);
+				console.log("peer list refresher:",networkName,ok,buffers,peers);
 
 				// Put the peer list as unique value in the DHT
-				peer._publishPeerList(networkName, peerList);
+				peer._publishPeerList(networkName, peers);
 			});
 		},
 
+
 		// Check the peer list periodically. If it is not existant, it means the
 		// root node is unreachable. Try to overtake the network.
-		_checkPeerList: function(networkName) {
-			this.node.get(networkPeersKey(networkName), function(ok, buffers) {
+		_checkPeerList: function(peer, networkName) {
+
+			peer.node.get(networkPeersKey(networkName), function(ok, buffers) {
 				if(!ok) {
 					// TODO overtake network
 				} else {
@@ -483,6 +487,7 @@ function getModule(Core) {
 			});
 		},
 
+
 		// Add created network to local network cache.
 		// TODO write the token in some file to restore it after client restart.
 		_addNetwork: function(name, token, protected) {
@@ -500,10 +505,11 @@ function getModule(Core) {
 			this._refreshNetworkInfo(this, name);
 		},
 
+
 		// Add joined network to local network cache.
 		// Start watching the network for missing peer list.
 		_addJoinedNetwork: function(rootPeer, networkName) {
-			var intervalId = setInterval(this._checkPeerList, this.peerListLifetime, networkName);
+			var intervalId = setInterval(this._checkPeerList, this.peerListLifetime, this, networkName);
 
 			// TODO send joined event
 
@@ -513,6 +519,7 @@ function getModule(Core) {
 				peerInterval: intervalId
 			};
 		},
+
 
 		// Remove joined network from local joined networks cache.
 		// Stop watching the network.
@@ -529,6 +536,7 @@ function getModule(Core) {
 
 			clearInterval(network.peerInterval);
 		},
+
 
 		// Remove created network from local created networks cache.
 		// Stop emitting the peer list.
@@ -593,7 +601,8 @@ function getModule(Core) {
 		},
 
 		// List of the available networks.
-		// TODO lookup for networks in the DHT.
+		// TODO:  lookup for networks in the DHT and join them with the
+		// TODO:: list of networks in the tracker
 		listNetworks: function() {
 			var socket = this.socket;
 			var requestId = this.requestId;
@@ -649,7 +658,7 @@ function getModule(Core) {
 					peer._addPendingRequest(requestId, function(response, error) {
 						console.log(response);
 						if(error == null && response === true) {
-							peer._addJoinedNetwork(rootNode, networkName);
+							peer._addJoinedNetwork(rootPeer, networkName);
 
 							socket.write(Core.createJsonRpcResponse(moduleReqId, true));
 							console.log('joined network', networkName);
