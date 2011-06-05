@@ -62,7 +62,7 @@ function trackerNetworkRequest(networkName, responseCallback) {
 			console.log("trackerNetworkRequest: Error while retrieving gateway IP");
 			gatewayAppendix = "";
 		} else {
-			gatewayAppendix = "/" + gatewayIP;
+			gatewayAppendix = "" // "/" + gatewayIP;  FIXME issue 01
 		}
 
 		options.path += gatewayAppendix;
