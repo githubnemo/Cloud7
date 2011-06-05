@@ -4,6 +4,7 @@
  * Route RPC signals, handle modules, handle events.
  */
 
+var corePort = 8124;
 
 var registeredModules = {};
 var registeredEvents = {};
@@ -735,6 +736,12 @@ var core = new Core(function() {
 
 	this.getModule("Core").obj.fireEvent("Core.initDone", []);
 
+	// TODO better solution for port configuration
+	if(process.argv.length > 2) {
+		corePort = parseInt(process.argv[2]);
+		console.log("alternative core port:", corePort)
+	}
+
 	// Setup RPC server
 	this.server = net.createServer(function (socket) {
 
@@ -780,7 +787,7 @@ var core = new Core(function() {
 
 		});
 
-	}).listen(8124);
+	}).listen(corePort);
 
 })
 

@@ -190,6 +190,14 @@ function getModule(Core) {
 		var peer = this;
 
 		this.port = 8125;
+
+		// TODO better solution for port configuration
+		console.log(process.argv)
+		if(process.argv.length > 3) {
+			this.port = parseInt(process.argv[3]);
+			console.log("alternative peer port:",this.port)
+		}
+
 		this.node = dht.createNode(this.port).setGlobal();
 
 		console.log('created node:', this.node)
