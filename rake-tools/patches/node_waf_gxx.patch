@@ -1,0 +1,7 @@
+--- gxx.py	2011-06-05 15:46:01.000000000 +0200
++++ gxx.py	2011-06-05 15:47:59.000000000 +0200
+@@ -131,3 +131,4 @@
+ 	conf.gxx_modifier_platform()
+ 	conf.cxx_load_tools()
+ 	conf.cxx_add_flags()
++	conf.link_add_flags()

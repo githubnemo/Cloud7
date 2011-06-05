@@ -1,0 +1,13 @@
+--- node-waf.bak	2011-06-05 15:57:04.000000000 +0200
++++ node-waf	2011-06-05 15:58:37.000000000 +0200
+@@ -4,8 +4,8 @@
+ 
+ join = os.path.join
+ bindir = os.path.dirname(os.path.realpath(__file__))
+-prefix = join(bindir, "..")
+-wafdir = join(prefix, "lib", "node")
++prefix = os.getenv('PREFIX_NODE') or join(bindir, "..")
++wafdir = os.getenv('PREFIX_NODE') and join(prefix, 'tools') or join(prefix, "lib", "node")
+ 
+ w = join(wafdir, 'wafadmin')
+ t = join(w, 'Tools')

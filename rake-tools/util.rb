@@ -16,13 +16,17 @@ module Util
 
   def doSystem(cmd)
     notice "Executing '#{cmd}'"
-    if ENV.include?('verbose')
+    if verboseMode?
       return true if system("#{cmd} 2>&1")
     else
       %x[#{cmd} 2>&1]
       return true if $?.success?
     end
     error "Error executing '#{cmd}'"
+  end
+
+  def verboseMode?
+    ENV.include?('verbose')
   end
 
   def msg(msg)
@@ -49,8 +53,9 @@ module Util
 
   def applyPatch(target, patchFile)
      _print "Trying to apply patch to '#{target}': ", :color => :yellow
-    ret = %x[patch -sN #{target}  < #{patchFile} 2>&1]
-    if not ret =~ /FAILED/i
+    ret = %x[patch --ignore-whitespace -F3 -sN #{target}  < #{patchFile} 2>&1]
+    notice ret
+    if not ret =~ /failed|malformed/i
       _puts("success", :color => :green, :noWrap => true)
     else
       _puts("failed", :color => :red, :noWrap => true)
