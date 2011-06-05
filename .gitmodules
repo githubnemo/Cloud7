@@ -4,3 +4,6 @@
 [submodule "core/lib/peers/node-dht"]
 	path = core/lib/peers/node-dht
 	url = https://github.com/githubnemo/node-dht.git
+[submodule "core/deps/carrier"]
+	path = core/deps/carrier
+	url = https://github.com/pgte/carrier.git

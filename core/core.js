@@ -4,6 +4,7 @@
  * Route RPC signals, handle modules, handle events.
  */
 
+var corePort = 8124;
 
 var registeredModules = {};
 var registeredEvents = {};
@@ -129,6 +130,14 @@ Array.valueOf = function(obj) {
  * Signature: Core(init)
  *
  * Provides the main program logic.
+ *
+ * Also provides access to events / modules for local modules:
+ * - registerLocalModule
+ * - unregisterModule
+ * - getModule
+ * - bindToEvent
+ * - callRemoteMethod
+ *
  */
 function Core(init) {
 	init.apply(this);
@@ -153,6 +162,75 @@ Core.prototype = {
 		delete registeredModules[name];
 	},
 
+	getModule: function(name) {
+		return registeredModules[name];
+	},
+
+	/**
+	 * Signature: callRpcMethodLocal(identifier, params, resultCallback)
+	 *
+	 * resultCallback signature: resultCallback(data)
+	 * 	'data' is tried to be parsed as JSON. If it fails, the data is
+	 * 	wrapped in an JSON RPC error response instead.
+	 *
+	 * Local modules provide methods which are designed to communicate over
+	 * RPC. Local modules don't do that but they should be able to use the
+	 * API. This method enables that.
+	 *
+	 * Example:
+	 *
+	 * 	// from a local module
+	 * 	Core.callRpcMethodLocal("Peers.sendMessage", ["a93c19a9d11c38", "OHAI"], <function#123>);
+	 *
+	 */
+	callRpcMethodLocal: function(identifier, params, resultCallback) {
+		var id = this.generateRequestId();
+		var self = this;
+
+		var fakeSocket = {
+			write: function(data) {
+				if(resultCallback === undefined) {
+					return;
+				}
+
+				var parsed = null;
+
+				try {
+					parsed = JSON.parse(data);
+				} catch(e) {
+					resultCallback(self.createJsonRpcError(id, [e,data], self.json_errors.parse_error));
+					return;
+				}
+
+				resultCallback(parsed);
+			}
+		};
+
+		new Dispatcher(JSON.parse(this.createJsonRpcRequest(identifier, params, id)), fakeSocket, this);
+	},
+
+	/**
+	 * Signature: bindToEvent(identifier, module, method) => Number
+	 *
+	 * Logic of CoreModule#bindToEvent.
+	 *
+	 * Returns the ID of the created event handler.
+	 *
+	 * Example:
+	 * 	bindToEvent("Peers.messageReceived", "FileTransfer", "peerMessageReceived")
+	 */
+	bindToEvent: function(identifier, module, method) {
+		var eventId = eventIdToEvent.addNewEvent(identifier, module, method);
+
+		// Save the events by identifier for easy lookup
+		if( registeredEvents[identifier] === undefined) {
+			registeredEvents[identifier] = [];
+		}
+
+		registeredEvents[identifier].append(eventId);
+
+		return eventId;
+	},
 
 	// Return an array of method names of obj which don't start with an underscore (_).
 	getMethods: function(obj) {
@@ -170,13 +248,15 @@ Core.prototype = {
 
 
 	/**
-	 * Signature: callRpcMethod(socket, method, params, responseHandler)
+	 * Signature: callRpcMethod(socket, method, params, responseHandler) => Number
 	 *
 	 * responseHandler signature: func(response, error)
 	 *
 	 * The response handler's argument response can be undefined if an
 	 * error occured. In this case, error is !== undefined. If no error
 	 * occured, error is undefined.
+	 *
+	 * error is a JSON RPC 2.0 response error structure.
 	 */
 	callRpcMethod: function(socket, method, params, responseHandler) {
 		var id = this.generateRequestId();
@@ -188,10 +268,20 @@ Core.prototype = {
 		return id;
 	},
 
-	generateRequestId: function () {
+	/**
+	 * Signature: generateRequestId([table]) => Number
+	 *
+	 * Generate a random number which is not yet registered.
+	 *
+	 * If table is given, it is checked if the generated id exists in
+	 * the table (object / hashmap) to generate a new id if it exists.
+	 *
+	 * If table is not given, pendingRequests is used instead.
+	 */
+	generateRequestId: function (table) {
 		for(;;) {
 			var id = Math.floor(Math.random()*Math.pow(2,32));
-			if(pendingRequests[id]) {
+			if((table && table[id]) || pendingRequests[id]) {
 				continue;
 			}
 			return id;
@@ -281,6 +371,7 @@ var CoreModule = {
 
 	registerModule: function(name, methods) {
 		var success = this.core.registerRpcModule(name, methods, this.socket);
+		// TODO return security token to sender
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, success));
 	},
 
@@ -305,11 +396,15 @@ var CoreModule = {
 	fireEvent: function(name, data) {
 		var listeners = registeredEvents[name];
 
+		if(listeners === undefined) {
+			return;
+		}
+
 		for(var i=0; i < listeners.length; i++) {
 			var row = eventIdToEvent[listeners[i]];
 
-			var module = registeredModules[row[1]]
-			var method = module.getMethod(row[2])
+			var module = registeredModules[row[1]];
+			var method = module.getMethod(row[2], true);
 
 			if(typeof method !== 'function') {
 				console.log("Can't fire event "+name+" to "+module+": No method.");
@@ -326,6 +421,7 @@ var CoreModule = {
 	 * identifier: String
 	 * callbackIdentifier: String
 	 *
+	 * Bind remote module to event.
 	 * Error response if the module in the callbackIdentifier is not loaded
 	 * or the callbackIdentifier is ill-formed.
 	 */
@@ -351,25 +447,23 @@ var CoreModule = {
 			return;
 		}
 
-		var eventId = eventIdToEvent.addNewEvent(identifier, module, method);
-
-		// Save the events by identifier for easy lookup
-		if( registeredEvents[identifier] === undefined) {
-			registeredEvents[identifier] = Array();
-		}
-
-		registeredEvents[identifier].append(eventId);
+		var eventId = this.core.bindToEvent(identifier, module, method);
 
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, eventId));
 	},
 
+	/**
+	 * Signature: unbindFromEvent(eventId) => Boolean
+	 *
+	 * Return true if the event was unbind, otherwise false.
+	 */
 	unbindFromEvent: function(eventId) {
 
 		// TODO check calling module (it shall own the event to unbind it)
 
 		delete eventIdToEvent[eventId];
 
-		// TODO return value
+		this.socket.write(this.core.createJsonRpcResponse(this.requestId, true));
 	}
 
 
@@ -417,7 +511,7 @@ var Module = function(name, methods) {
 };
 
 Module.prototype = {
-	getMethod: function(name) { throw new Execption("getMethod on raw module."); }
+	getMethod: function(name, local) { throw new Execption("getMethod on raw module."); }
 };
 
 
@@ -435,8 +529,17 @@ var LocalModule = function(name, methods, obj) {
 };
 
 LocalModule.prototype = {
-	getMethod: function(name) {
-		if(this.methods.has(name)) {
+
+	/**
+	 * Signature: getMethod(name, [local])
+	 *
+	 * Return the method identified by name.
+	 *
+	 * If boolean local is true, the exported methods list (this.methods) is ignored.
+	 * See CoreModule.fireEvent for use case.
+	 */
+	getMethod: function(name, local) {
+		if(local || this.methods.has(name)) {
 			// TODO check for evilness
 			return eval("this.obj."+name);
 		}
@@ -461,10 +564,15 @@ var RpcModule = function(name, methods, socket) {
 RpcModule.prototype = {
 
 	/**
-	 * Signature: getMethod(name)
+	 * Signature: getMethod(name, [local])
 	 *
 	 * Builds a proxy method which makes an RPC call to the requested method.
 	 * The result is written back to the requesting socket.
+	 *
+	 * The boolean local flag is used to determine if this call is used
+	 * for local usage (that is, using for calling an event handler for example)
+	 * or not. If local is true, the internal methods list is not checked for
+	 * the calling method, allowing unexported methods to be called.
 	 *
 	 * Example:
 	 * IN: {"method":"Peers.get","id":123,"params":[]}
@@ -477,10 +585,11 @@ RpcModule.prototype = {
 	 *	returned.
 	 * OUT: {"result":"getet","id":123,"error":null}
 	 *
+	 *
 	 * @return function 	Proxy method for handling the request.
 	 */
-	getMethod: function(name) {
-		if(this.methods.has(name)) {
+	getMethod: function(name, local) {
+		if(local || this.methods.has(name)) {
 			var module = this;
 			return function() {
 				// Proxy method
@@ -521,6 +630,7 @@ RpcModule.prototype = {
  *	- this.requestId
  *	- this.socket
  *	- this.core
+ *	- receiving module
  *	The called function receives the parameters passed
  *	by the request.
  *
@@ -545,7 +655,7 @@ var Dispatcher = function(message, socket, core) {
 	} else if(this.core.validateJsonRpcResponse(message)) {
 		this.routeResponse(message);
 	} else {
-		console.log("Invalid JSON-RPC 2.0 Data:", message);
+		console.log("Core.Dispatcher: Invalid JSON-RPC 2.0 Data:", message, "type:", typeof message);
 		return false;
 	}
 
@@ -579,7 +689,7 @@ Dispatcher.prototype = {
 		var method = module.getMethod(methodName);
 
 		if(typeof method !== 'function') {
-			console.log("Unknown method in RPC request:",methodName);
+			console.log("Unknown method in RPC request:",methodName, method, module);
 			this.socket.write(this.core.createJsonRpcError(
 				request.id, "Unknown method "+methodName, this.core.json_errors.method_not_found));
 			return;
@@ -609,28 +719,55 @@ Dispatcher.prototype = {
  */
 var core = new Core(function() {
 
+	// nodejs modules
 	var net = require('net');
+	var carrier = require('./deps/carrier/lib/carrier');
+
+	// Local modules
 	var conf = require('./lib/conf/conf.js');
 	var peers = require('./lib/peers/peers.js');
+	var filetransfer = require('./lib/filetransfer/filetransfer.js');
 
 	var core = this;
 
 	this.registerLocalModule("Core", CoreModule);
 	this.registerLocalModule("Config", conf.getModule(this));
 	this.registerLocalModule("Peers", peers.getModule(this));
+	this.registerLocalModule("FileTransfer", filetransfer.getModule(this));
 
+	this.getModule("Core").obj.fireEvent("Core.initDone", []);
+
+	// TODO better solution for port configuration
+	if(process.argv.length > 2) {
+		corePort = parseInt(process.argv[2]);
+		console.log("alternative core port:", corePort)
+	}
 
 	// Setup RPC server
 	this.server = net.createServer(function (socket) {
 
-		socket.on('data', function(data) {
+		socket.on('error', function(error) {
+			console.log("ERROR occured in socket comminication:", error);
+		});
+
+		carrier.carry(socket, function(data) {
+
+			if(!socket.writable || !socket.readable) {
+				console.log("Socket closed, stopping handler.");
+				return;
+			}
 
 			// Overwrite write for debugging/logging purposes.
 			socket.write = function(that, write) {
 				return function() {
 					var args = Array.valueOf(arguments);
 					args[args.length] = function() { console.log("OUT:",args); };
-					write.apply(that, args);
+
+					try {
+						write.apply(that, args);
+					} catch(e) {
+						console.log('Error while writing to RPC socket',error);
+					}
 				}
 			}(socket, socket.write);
 
@@ -651,7 +788,7 @@ var core = new Core(function() {
 
 		});
 
-	}).listen(8124);
+	}).listen(corePort);
 
 })
 

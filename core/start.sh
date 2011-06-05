@@ -6,25 +6,25 @@ if [ -e "start_config" ]; then
 fi
 
 no_nodejs() {
-	echo "node.js not found. Configure \$NODE_PATH in file start_config or fix your PATH"
+	echo "node.js not found. Configure \$NODE_ROOT in file start_config or fix your PATH"
 	exit 1
 }
 
-if [ -z "$NODE_PATH" ] && ! which node >/dev/null; then
+if [ -z "$NODE_ROOT" ] && ! which node >/dev/null; then
 	no_nodejs
-elif [ -z "$NODE_PATH" ]; then
-	NODE_PATH=$(dirname $(which node))
+elif [ -z "$NODE_ROOT" ]; then
+	NODE_ROOT=$(dirname $(which node))
 fi
 
 # Check for existance of executable
-if [ -z "$NODE_PATH" ] || ! [ -e "$NODE_PATH/node" ]; then
+if [ -z "$NODE_ROOT" ] || ! [ -e "$NODE_ROOT/node" ]; then
 	no_nodejs
 fi
 
 trap "echo \"Aborting execution...\"" 2
 
-echo "Starting core"
-$NODE_PATH/node core.js
+echo "Starting core\n-------------"
+$NODE_ROOT/node core.js $@
 res=$?
-echo "Core exited"
+echo "-------------\nCore exited"
 exit $?

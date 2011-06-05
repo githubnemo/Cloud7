@@ -1,6 +1,8 @@
 var os = require('os');
 var cproc = require('child_process');
 
+// TODO test error cases and different console language settings which may interfere
+
 // responseCb(gateway)
 //
 function getDefaultRoute(responseCb) {
@@ -52,11 +54,14 @@ function getDefaultRouteBSD(responseCb) {
 }
 
 function getDefaultRouteWindows(responseCb) {
-	console.log("getDefaultRouteWindows: Not implemented yet...");
 
-	responseCb(null); // TODO
+	return cproc.exec('route print 0.0.0.0 | findstr 0.0.0.0', function(error, stdout, stderr) {
+		var routeString = stdout.trim();
 
-	return null;
+		var gateway = routeString.split(' ').filter(function(x) { return x.length > 0 })[2];
+
+		responseCb(gateway);
+	}
 }
 
 module.exports = {getDefaultRoute: getDefaultRoute};
