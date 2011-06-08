@@ -43,6 +43,12 @@ function getModule(Core) {
 		this._startPublicFileWatcher();
 
 
+		// Memory of misc. requests like file list retrieval.
+		// { id: {
+		// 		callback: <callback>
+		// } }
+		this.ownRequests = {};
+
 		// Memory of download requests issued by us.
 		// { id: {
 		//		network: <network name>,
@@ -130,6 +136,15 @@ function getModule(Core) {
 				} catch(e) {
 					console.log("FileTransfer: error while parsing response", jsonRpcResponse);
 				}
+
+				self._deleteOwnDownloadRequest(jsonRpcResponse.id);
+
+			} else if(self.ownRequests[jsonRpcResponse.id]) {
+				// Call responsible callback and remove request from request map
+
+				self.ownRequests[jsonRpcResponse.id](jsonRpcResponse);
+
+				self._deleteOwnDownloadRequest(jsonRpcResponse.id);
 			}
 		},
 
@@ -342,6 +357,18 @@ function getModule(Core) {
 		},
 
 
+		_registerOwnRequest: function(id, callback) {
+			this.ownRequests[id] = {
+				callback: callback
+			};
+		},
+
+
+		_deleteOwnRequest: function(id) {
+			delete this.ownRequests[id];
+		},
+
+
 		_registerOwnDownloadRequest: function(id, networkName, sourcePeerId, fileName, destinationPath, callback) {
 			this.ownDownloadRequests[id] = {
 				network: networkName,
@@ -454,16 +481,33 @@ function getModule(Core) {
 					} else {
 						console.log("retrieveFile on not joined network.");
 
-						socket.write(Core.createJsonRpcError(
-							moduleRequestId, "Network "+networkName+" is not joined.", Core.json_errors.internal_error));
+						answerRequest(socket, Core.createJsonRpcError(
+							moduleRequestId,
+							"Network "+networkName+" is not joined.",
+							Core.json_errors.internal_error));
 					}
 
 				}
 			});
 		},
 
+		listMyFiles: function(networkName) {
+			// TODO
+		},
+
 		// List files from peers in the network
+		//
+		// This RPC call is special because it has more than one
+		// response. Once fired, the respones can come after
+		// many seconds, whenever the other peers respond.
+		//
+		// This requests marks itself as finished after 30 seconds.
+		//
 		listFiles: function(networkName) {
+			var socket = this.socket;
+			var moduleReqId = this.requestId;
+			var self = this.module.obj;
+
 			Core.callRpcMethodLocal("Peers.listPeers", [], function(response) {
 				// TODO handle error
 
@@ -471,7 +515,17 @@ function getModule(Core) {
 
 				for(var i=0; i < peerList.length; i++) {
 					var peerId = peerList[i];
-					// TODO everything for listing files
+					var requestId = Core.generateRequestId();
+					var fileQuery = Core.createJsonRpcRequest('FileTransfer.listFiles', [], requestId);
+
+					self._registerOwnRequest(requestId, function(response) {
+						if(response.result !== undefined) {
+							socket.write(Core.createJsonRpcResponse(moduleReqId, response.result));
+						}
+						// Ignore failing requests here, just log them for debug purposes.
+						console.log("Missed file request: "+response);
+					});
+
 					Core.callRpcMethodLocal("Peers.sendMessage", [peerId, fileQuery]);
 				}
 			});
