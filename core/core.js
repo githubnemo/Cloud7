@@ -420,7 +420,11 @@ var CoreModule = {
 				return;
 			}
 
-			method.apply({module: module, socket: this.socket, requestId: this.generateRequestId(), core: this.core}, data);
+			method.apply({
+				module: module,
+				socket: this.socket,
+				requestId: this.core.generateRequestId(),
+				core: this.core}, data);
 		}
 	},
 
@@ -775,7 +779,7 @@ var core = new Core(function() {
 					try {
 						write.apply(that, args);
 					} catch(e) {
-						console.log('Error while writing to RPC socket',error);
+						console.log('Error while writing to RPC socket', e);
 					}
 				}
 			}(socket, socket.write);
