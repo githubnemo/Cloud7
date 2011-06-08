@@ -13,6 +13,12 @@ function networkFileHash(networkName, fileHash) {
 
 function getModule(Core) {
 
+	function answerRequest(socket, data) {
+		socket.write(data);
+		Core.callRpcMethodLocal("Core.finishRequest", [data.id]);
+	}
+
+
 	function FileTransfer() {
 
 		this.peersModule = Core.getModule("Peers")
@@ -116,7 +122,6 @@ function getModule(Core) {
 
 			if(self.ownDownloadRequests[jsonRpcResponse.id]) {
 				// Handle it, it's for us :)
-
 				var downloadData = self.ownDownloadRequests[jsonRpcResponse.id];
 
 				try {
@@ -417,7 +422,7 @@ function getModule(Core) {
 
 					console.log("Error while retrieving joined networks", response);
 
-					socket.write(Core.createJsonRpcError(
+					answerRequest(socket, Core.createJsonRpcError(
 							moduleRequestId, "Error while retrieving joined networks: "+response.toString(),
 							Core.json_errors.internal_error));
 
@@ -428,8 +433,10 @@ function getModule(Core) {
 
 						self._findFileInNetwork(networkName, fileName, function(peers) {
 							if(peers.length == 0) {
-								socket.write(Core.createJsonRpcError(
-										moduleRequestId, "File "+fileName+" not found in network.", Core.json_errors.internal_error));
+								answerRequest(socket, Core.createJsonRpcError(
+										moduleRequestId,
+										"File "+fileName+" not found in network.",
+										Core.json_errors.internal_error));
 							} else {
 								// Start download and wait for successful deploy.
 								// Writes an ID for the download to the sender so he can track the download.
@@ -438,7 +445,7 @@ function getModule(Core) {
 								//
 								// TODO enable retry at other peer if download from this peer fails
 								self._startDownloadFileFromPeer(networkName, peers[0], fileName, localPath, function(id) {
-									socket.write(Core.createJsonRpcResponse(moduleRequestId, id));
+									answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, id));
 								});
 							}
 						});
@@ -468,6 +475,11 @@ function getModule(Core) {
 					Core.callRpcMethodLocal("Peers.sendMessage", [peerId, fileQuery]);
 				}
 			});
+
+			// Timeout for finishing this request.
+			setTimeout(function() {
+				Core.callRpcMethodLocal("Core.finishRequest", [moduleReqId]);
+			}, 30000);
 		},
 	};
 

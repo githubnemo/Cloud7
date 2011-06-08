@@ -369,6 +369,15 @@ var CoreModule = {
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, echoThis));
 	},
 
+	/*
+	 * Signature: finishRequest(id) => Void
+	 *
+	 * Mark the request with the given id as answered.
+	 */
+	finishRequest: function(id) {
+		delete pendingRequests[id];
+	},
+
 	registerModule: function(name, methods) {
 		var success = this.core.registerRpcModule(name, methods, this.socket);
 		// TODO return security token to sender

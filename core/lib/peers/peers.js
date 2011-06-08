@@ -184,6 +184,14 @@ function makeBuffer(s) { return new Buffer(s.toString()); }
 
 function getModule(Core) {
 
+
+	// Write data to socket and mark request as answered.
+	function answerRequest(socket, data) {
+		socket.write(data);
+		Core.callRpcMethodLocal("Core.finishRequest", [data.id]);
+	}
+
+
 	var PeerModule = function() {
 		// TODO configurable/automatic port
 
@@ -572,10 +580,10 @@ function getModule(Core) {
 				if(error === null) {
 					peer._addNetwork(name, token, false);
 
-					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
+					answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, token));
 					console.log('added network',name,'token',token);
 				} else {
-					socket.write(Core.createJsonRpcError(moduleRequestId, error, Core.json_errors.internal_error));
+					answerRequest(socket, Core.createJsonRpcError(moduleRequestId, error, Core.json_errors.internal_error));
 					console.log('error while creating network', name, error);
 				}
 			});
@@ -591,10 +599,10 @@ function getModule(Core) {
 				if(error === null) {
 					peer._addNetwork(name, token, true);
 
-					socket.write(Core.createJsonRpcResponse(moduleRequestId, token));
+					answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, token));
 					console.log('added protected network',name);
 				} else {
-					this.socket.write(Core.createJsonRpcError(this.requestId, error, Core.json_errors.internal_error));
+					answerRequest(socket, Core.createJsonRpcError(moduleRequestId, error, Core.json_errors.internal_error));
 					console.log('error while creating protected network', name, error);
 				}
 			});
@@ -609,10 +617,10 @@ function getModule(Core) {
 
 			trackerNetworkList(function(list, error) {
 				if(error === null) {
-					socket.write(Core.createJsonRpcResponse(requestId, list));
+					answerRequest(socket, Core.createJsonRpcResponse(requestId, list));
 					console.log('network list', list);
 				} else {
-					socket.write(Core.createJsonRpcError(requestId, error, Core.json_errors.internal_error));
+					answerRequest(socket, Core.createJsonRpcError(requestId, error, Core.json_errors.internal_error));
 					console.log('error while listing networks', error);
 				}
 			});
@@ -627,12 +635,13 @@ function getModule(Core) {
 			var socket = this.socket;			// requesting module's socket
 			var moduleReqId = this.requestId;	// requesting module's request id
 
-			// TODO ask the DHT for the network if we're connected
+			// TODO ask the DHT for the network in case we're already connected
 
 			// Get network from tracker.
 			trackerNetworkRequest(networkName, function(rootPeer, error) {
 				if(error != null) {
-					socket.write(Core.createJsonRpcError(moduleReqId, 'Error in getting network from tracker: ' + error,
+					answerRequest(socket, Core.createJsonRpcError(moduleReqId,
+							'Error in getting network from tracker: ' + error,
 							Core.json_errors.internal_error));
 					return;
 				}
@@ -660,10 +669,12 @@ function getModule(Core) {
 						if(error == null && response === true) {
 							peer._addJoinedNetwork(rootPeer, networkName);
 
-							socket.write(Core.createJsonRpcResponse(moduleReqId, true));
+							answerRequest(socket, Core.createJsonRpcResponse(moduleReqId, true));
+
 							console.log('joined network', networkName);
 						} else {
-							socket.write(Core.createJsonRpcError(moduleReqId, error, Core.json_errors.internal_error));
+							answerRequest(socket, Core.createJsonRpcError(moduleReqId, error, Core.json_errors.internal_error));
+
 							console.log('error while joining network', networkName);
 						}
 					});
@@ -698,7 +709,7 @@ function getModule(Core) {
 			var network = peer.joinedNetworks[name];
 
 			if(network === undefined) {
-				return socket.write(Core.createJsonRpcError(moduleRequestId,
+				return answerRequest(socket, Core.createJsonRpcError(moduleRequestId,
 							"Unknown network: "+name, Core.json_errors.internal_error));
 			}
 
@@ -708,10 +719,10 @@ function getModule(Core) {
 				if(error == null) {
 					peer._leaveNetwork(name);
 
-					socket.write(Core.createJsonRpcResponse(moduleRequestId, true));
+					answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, true));
 					console.log("Successfully left network", name);
 				} else {
-					socket.write(Core.createJsonRpcError(moduleRequestId, error, Core.json_errors.internal_error));
+					answerRequest(socket, Core.createJsonRpcError(moduleRequestId, error, Core.json_errors.internal_error));
 					console.log("Error while leaving network:", error);
 				}
 			};
@@ -728,7 +739,7 @@ function getModule(Core) {
 
 			peer.node.put(makeBuffer(key), makeBuffer(data), ttl);
 
-			this.socket.write(createJsonRpcResponse(this.requestId, true));
+			answerRequest(this.socket, createJsonRpcResponse(this.requestId, true));
 		},
 
 
@@ -743,7 +754,7 @@ function getModule(Core) {
 				for(var i=0; i < results.length; i++) {
 					results[i] = results[i].toString();
 				}
-				socket.write(createJsonRpcResponse(moduleRequestId, results));
+				answerRequest(socket, createJsonRpcResponse(moduleRequestId, results));
 			});
 		},
 
@@ -754,7 +765,7 @@ function getModule(Core) {
 
 			peer.node.send(peerId, makeBuffer(message));
 
-			this.socket.write(Core.createJsonRpcResponse(this.requestId, true));
+			answerRequest(this.socket, Core.createJsonRpcResponse(this.requestId, true));
 		},
 
 
@@ -771,7 +782,7 @@ function getModule(Core) {
 					try {
 						peers = JSON.parse(buffers[0].toString());
 					} catch(e) {
-						socket.write(Core.createJsonRpcError(moduleRequestId,
+						answerRequest(socket, Core.createJsonRpcError(moduleRequestId,
 								"listPeers: " + e, Core.json_errors.parse_error));
 						return;
 					}
@@ -779,7 +790,7 @@ function getModule(Core) {
 					peers = [];
 				}
 
-				socket.write(Core.createJsonRpcResponse(moduleRequestId, peers));
+				answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, peers));
 			});
 		},
 
@@ -794,7 +805,7 @@ function getModule(Core) {
 
 		// Return node ID in the DHT
 		getMyId: function() {
-			this.socket.write(Core.createJsonRpcResponse(this.requestId, this.module.obj.node.id));
+			answerRequest(this.socket, Core.createJsonRpcResponse(this.requestId, this.module.obj.node.id));
 		},
 
 
@@ -802,7 +813,7 @@ function getModule(Core) {
 		getJoinedNetworks: function() {
 			var peer = this.module.obj;
 
-			this.socket.write(Core.createJsonRpcResponse(this.requestId, Object.keys(peer.joinedNetworks)));
+			answerRequest(this.socket, Core.createJsonRpcResponse(this.requestId, Object.keys(peer.joinedNetworks)));
 		},
 
 
