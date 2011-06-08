@@ -744,7 +744,7 @@ function getModule(Core) {
 
 			peer.node.put(makeBuffer(key), makeBuffer(data), ttl);
 
-			answerRequest(this.socket, createJsonRpcResponse(this.requestId, true));
+			answerRequest(this.socket, Core.createJsonRpcResponse(this.requestId, true));
 		},
 
 
@@ -759,7 +759,7 @@ function getModule(Core) {
 				for(var i=0; i < results.length; i++) {
 					results[i] = results[i].toString();
 				}
-				answerRequest(socket, createJsonRpcResponse(moduleRequestId, results));
+				answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, results));
 			});
 		},
 
