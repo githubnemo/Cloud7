@@ -373,19 +373,7 @@ function getModule(Core) {
 
 			console.log('_addPeerToNetwork(',networkName,',',peerId,')');
 
-			peer.node.get(peerListKey, function(ok, buffers) {
-				if(!ok) {
-					return;
-				}
-
-				var peers = [];
-
-				try {
-					peers = JSON.parse(buffers[0].toString());
-				} catch(e) {
-					return;
-				}
-
+			peer._hostGetNetworkPeers(networkName, function(peers) {
 				// Ignore already registered peer.
 				if(peers.indexOf(peerId) >= 0) {
 					return;
@@ -401,24 +389,33 @@ function getModule(Core) {
 		_publishPeerList: function(networkName, peerList) {
 			var jsonPeerList = JSON.stringify( peerList );
 			console.log("_publishPeerList",networkName,jsonPeerList);
+			this.networks[networkName].peers = peerList; // Update local peer cache
 			this.node.put(networkPeersKey(networkName), makeBuffer(jsonPeerList), this.peerListLifetime, true);
+		},
+
+
+		// For network hosts: get peers, fallback with local cache
+		// callback(list)
+		_hostGetNetworkPeers: function(networkName, callback) {
+			self = this;
+			this.node.get(networkPeersKey(networkName), function(ok, buffers) {
+				var cachedPeers = self.networks[networkName].peers;
+				if(!ok) {
+					callback(cachedPeers);
+				} else {
+					try {
+						callback(JSON.parse(buffers[0].toString()));
+					} catch(e) {
+						callback(cachedPeers);
+					}
+				}
+			});
 		},
 
 
 		// Remove given peer from DHT[networkPeersKey(networkName)]
 		_removePeerFromNetwork: function(networkName, peerId) {
-			this.node.get(networkPeersKey(networkName), function(ok, buffers) {
-				if(!ok) {
-					return;
-				}
-
-				var peers = [];
-				try {
-					peers = JSON.parse(buffers[0].toString());
-				} catch(e) {
-					return;
-				}
-
+			this._hostGetNetworkPeers(networkName, function(peers) {
 				var peerList = peers.filter(function(e) { return e != peerId; });
 				this._publishPeerList(networkName, peerList);
 			});
@@ -449,18 +446,8 @@ function getModule(Core) {
 			// The node to speak with for this network is me.
 			peer.node.put(networkKey(networkName), makeBuffer(peer.node.id), peer.peerListLifetime / 1000);
 
-			peer.node.get(networkPeersKey(networkName), function(ok, buffers) {
-				var peers = [peer.node.id];
-
-				if(ok) {
-					try {
-						peers = JSON.parse(buffers[0].toString());
-					} catch(e) {
-						console.log("Peer list refresher:", e, 'data:', data.toString());
-					}
-				}
-
-				console.log("peer list refresher:",networkName,ok,buffers,peers);
+			peer._hostGetNetworkPeers(networkName, function(peers) {
+				console.log("peer list refresher:",networkName,peers);
 
 				// Put the peer list as unique value in the DHT
 				peer._publishPeerList(networkName, peers);
@@ -490,7 +477,7 @@ function getModule(Core) {
 						// TODO overtake network
 					}
 
-					this.joinedNetworks[networkName]['peerListCache'] = peerList;
+					peer.joinedNetworks[networkName]['peerListCache'] = peerList;
 				}
 			});
 		},
@@ -506,6 +493,7 @@ function getModule(Core) {
 			this.networks[name] = {
 				token: token,
 				protected: false,
+				peers: [this.node.id],
 				peerInterval: intervalId
 			};
 
