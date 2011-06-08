@@ -24,7 +24,11 @@ fi
 trap "echo \"Aborting execution...\"" 2
 
 echo "Starting core\n-------------"
-$NODE_ROOT/node core.js $@
+if [ -n "$DEBUG" ]; then
+	gdb -args $NODE_ROOT/node core.js $@
+else
+	$NODE_ROOT/node core.js $@
+fi
 res=$?
 echo "-------------\nCore exited"
 exit $?
