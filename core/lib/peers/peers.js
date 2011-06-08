@@ -271,11 +271,11 @@ function getModule(Core) {
 
 
 			function handleRequest(jsonData) {
-				if(peer.validRequests[jsonData.method] === undefined ||
+				if(peer.validRequests[jsonData.method] != undefined &&
 				   peer.validRequests[jsonData.method] != jsonData.params.length) {
 					node.send(from, makeBuffer(Core.createJsonRpcError(jsonData.id,
-												'Undefined method or invalid param. count',
-												Core.json_errors.invalid_request)));
+									'Undefined method or invalid param. count: '+jsonData,
+									Core.json_errors.invalid_request)));
 					console.log('Invalid request',jsonData,'from',from);
 					return;
 				}
