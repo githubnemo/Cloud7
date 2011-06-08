@@ -61,7 +61,7 @@ function getDefaultRouteWindows(responseCb) {
 		var gateway = routeString.split(' ').filter(function(x) { return x.length > 0 })[2];
 
 		responseCb(gateway);
-	}
+	});
 }
 
 module.exports = {getDefaultRoute: getDefaultRoute};
