@@ -521,9 +521,10 @@ function getModule(Core) {
 					self._registerOwnRequest(requestId, function(response) {
 						if(response.result !== undefined) {
 							socket.write(Core.createJsonRpcResponse(moduleReqId, response.result));
+						} else {
+							// Ignore failing requests here, just log them for debug purposes.
+							console.log("Missed file request: "+response);
 						}
-						// Ignore failing requests here, just log them for debug purposes.
-						console.log("Missed file request: "+response);
 					});
 
 					Core.callRpcMethodLocal("Peers.sendMessage", [peerId, fileQuery]);

@@ -653,6 +653,9 @@ function getModule(Core) {
 					console.log("joining network",networkName,'peer',rootPeer,'success',success);
 
 					if(!success) {
+						answerRequest(socket, Core.createJsonRpcError(moduleReqId,
+							'Error in joining network ' + networkName + ': DHT join failed',
+							Core.json_errors.internal_error));
 						console.log("Join: NO SUCCESS!", networkName, 'peer', rootPeer, success);
 						return;
 					}
@@ -660,7 +663,8 @@ function getModule(Core) {
 					var requestId = Core.generateRequestId();
 					var request = Core.createJsonRpcRequest('join', [networkName], requestId);
 
-					// FIXME experimental
+					// FIXME:  experimental. It's not guaranteed that the first peer is the
+					// FIXME:: network owner. This should be verified.
 					rootPeer.dht_id = peers[0];
 
 					// Register handler for join request response.
@@ -673,7 +677,8 @@ function getModule(Core) {
 
 							console.log('joined network', networkName);
 						} else {
-							answerRequest(socket, Core.createJsonRpcError(moduleReqId, error, Core.json_errors.internal_error));
+							answerRequest(socket, Core.createJsonRpcError(moduleReqId, error,
+									Core.json_errors.internal_error));
 
 							console.log('error while joining network', networkName);
 						}
