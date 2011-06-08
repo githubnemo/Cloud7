@@ -519,7 +519,7 @@ function getModule(Core) {
 		_addJoinedNetwork: function(rootPeer, networkName) {
 			var intervalId = setInterval(this._checkPeerList, this.peerListLifetime, this, networkName);
 
-			// TODO send joined event
+			Core.callRpcMethodLocal("Core.fireEvent", ["Peers.joinedNetwork", [networkName]])
 
 			// mark as joined
 			this.joinedNetworks[networkName] = {
@@ -538,7 +538,7 @@ function getModule(Core) {
 
 			var network = this.joinedNetworks[networkName];
 
-			// TODO send left event
+			Core.callRpcMethodLocal("Core.fireEvent", ["Peers.leftNetwork", [networkName]])
 
 			delete this.joinedNetworks[networkName];
 
