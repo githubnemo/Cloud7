@@ -368,7 +368,10 @@ function getModule(Core) {
 
 
 		_stopFileListingServer: function(server) {
-			server.close();
+			// Throws exception if already closed...
+			try {
+				server.close();
+			} catch(e) {}
 		},
 
 
@@ -606,7 +609,12 @@ function getModule(Core) {
 
 						self._registerOwnRequest(requestId, function(response) {
 							if(response.result !== undefined) {
-								listSocket.write(JSON.stringify(response.result) + "\n");
+								try {
+									listSocket.write(JSON.stringify(response.result) + "\n");
+								} catch(e) {
+									console.log("listSocket error",e)
+									return;
+								}
 							} else {
 								// Ignore failing requests here, just log them for debug purposes.
 								console.log("Missed file request: "+response);
@@ -623,7 +631,9 @@ function getModule(Core) {
 					}
 
 					setTimeout(function() {
-						listSocket.write("END\n");
+						if(listSocket.writeable) {
+							listSocket.write("END\n");
+						}
 						self._stopFileListingServer(server);
 					}, listenTimeout);
 				},
