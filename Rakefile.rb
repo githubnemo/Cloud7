@@ -8,6 +8,8 @@ task :default => [ "build:all" ]
 $root_dir = Dir.pwd
 $temp_dir = Dir.pwd + "/_temp"
 
+msg "Verbose mode !" if verboseMode?
+
 ####
 # Initialization
 ####
@@ -53,6 +55,8 @@ namespace :node do
       notice "node already built, NOT rebuilding"
     else
       applyPatch("./deps/libev/wscript", "#{$root_dir}/rake-tools/patches/libev_wscript.patch")
+      applyPatch("./tools/node-waf", "#{$root_dir}/rake-tools/patches/node_waf.patch")
+      applyPatch("./tools/wafadmin/Tools/gxx.py", "#{$root_dir}/rake-tools/patches/node_waf_gxx.patch")
 
       %[make clean] # Clean up. This cannot go with the next cmd, because this may fail if
                     # project is not configured.
@@ -91,7 +95,7 @@ namespace :libcage do
   task :build => [ :init, "node:build" ] do
     msg "Building libcage"
 
-    doSystem('git clone git://github.com/githubnemo/libcage.git libcage') unless
+    doSystem('git clone -b master git://github.com/githubnemo/libcage.git libcage') unless
       File.directory?('libcage')
 
     notice "Changing to ./libcage/"
@@ -104,6 +108,8 @@ namespace :libcage do
 
     node_dir = getNodeDir()
     doSystem("omake CXXFLAGS='-I#{node_dir}/deps/libev/ -fPIC' LDFLAGS='#{node_dir}/build/default/deps/libev/ev_1.o #{node_dir}/build/default/deps/libev/event_1.o' EV=TRUE")
+
+    Dir.chdir('../')
   end
 
   task :clean do
@@ -116,7 +122,29 @@ namespace :libcage do
     end
   end
 
+
 end # Namespace :libcage
+
+
+
+namespace :nodedht do
+
+  task :build => [ :init, "libcage:build" ] do
+    msg "Building node-dht"
+
+    doSystem('git clone git://github.com/githubnemo/node-dht.git node-dht') unless
+      File.directory?('node-dht')
+
+    notice "Changing to ./node-dht/"
+    Dir.chdir( './node-dht/' )
+
+    node_dir = getNodeDir()
+    doSystem("CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{$root_dir}/_temp/libcage/src/' node-waf configure build")
+
+    Dir.chdir( '..' )
+  end
+
+end # Namespace :nodedht
 
 
 ####
