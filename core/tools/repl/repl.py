@@ -51,6 +51,7 @@ def main():
 		"filelist":			c.cmdFileList,
 		"fire":				c.cmdFireEvent,
 		"help":				c.cmdHelp,
+		"python":			c.cmdPython,
 		"registerModule":	c.cmdRegisterModule
 	}
 

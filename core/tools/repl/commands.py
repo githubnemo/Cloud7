@@ -87,6 +87,13 @@ def cmdHelp(commands, core, argv):
 		 	print "No help for command '%s' available." % (cmd)
 
 
+def cmdPython(core, argv):
+	if len(argv) == 1:
+		print "Usage: python <code...>"
+		return
+	exec(" ".join(argv[1:]))
+
+
 def cmdRegisterModule(core, argv):
 	if len(argv) < 3:
 		print "Usage: registerModule <name> <methods...>\nExample: registerModule REPL foo bar baz"
