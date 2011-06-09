@@ -621,6 +621,7 @@ function getModule(Core) {
 					}
 
 					setTimeout(function() {
+						listSocket.write("END\n");
 						self._stopFileListingServer(server);
 					}, listenTimeout);
 				},
