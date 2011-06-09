@@ -11,6 +11,45 @@ function networkFileHash(networkName, fileHash) {
 }
 
 
+// Split too long lists in sublists so they don't exceed a given limit.
+// If an element is bigger than the limitPerList, an exception is thrown.
+//
+// Signature: splitInLists(list, [limitPerList])
+//
+// list : List[String]
+//
+// Default limitPerList: 5000 (byte)
+//
+function splitInLists(list, limitPerList) {
+	if(limitPerList == undefined) {
+		limitPerList = 5000; // byte
+	}
+
+	var currentCount = 0;
+	var lastEnd = 0;
+	var lists = [];
+
+	for(var i=0; i < list.length; i++) {
+		if(list[i].length > limitPerList) {
+			throw "element " + i + " is bigger than limit per list"
+		}
+
+		if(currentCount+list[i].length == limitPerList) {
+			lists = lists.concat([list.slice(lastEnd, i)]);
+			lastEnd = i+1;
+			currentCount = 0;
+		} else if(currentCount+list[i].length > limitPerList) {
+			lists = lists.concat([list.slice(lastEnd, i-1)]);
+			lastEnd = i+1;
+			currentCount = list[i].length;
+		} else {
+			currentCount += list[i].length;
+		}
+	}
+
+	return lists;
+}
+
 function getModule(Core) {
 
 	function answerRequest(socket, data) {
@@ -203,9 +242,20 @@ function getModule(Core) {
 		},
 
 
+		// File list answers can be split up to many lists. The receiver must be
+		// prepared to receive a bunch of lists under the same request id.
 		_answerListFilesRequest: function(senderId, request) {
-			var response = Core.createJsonRpcResponse(request.id, Object.keys(this.publicFiles));
-			Core.callRpcMethodLocal("Peers.sendMessage", [senderId, response]);
+			var lists = splitInLists(this.publicFiles.map(function(e) { return e.file; }), 100);
+
+			console.log("LISTSLENGHT",lists.length)
+
+			for(var i=0; i < lists.length; i++) {
+				var response = Core.createJsonRpcResponse(request.id, lists[i]);
+
+				console.log("_answerListFilesRequest response is", response.length,"chars.")
+
+				Core.callRpcMethodLocal("Peers.sendMessage", [senderId, response]);
+			}
 		},
 
 
