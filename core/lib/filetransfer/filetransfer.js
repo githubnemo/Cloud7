@@ -307,7 +307,7 @@ function getModule(Core) {
 				console.log("opened file server on", address);
 
 				this.activeServers[fileLocation] = server;
-				addressCallback(address.ip, address.port);
+				addressCallback(address.address, address.port);
 			});
 		},
 
@@ -543,6 +543,27 @@ function getModule(Core) {
 			// TODO
 		},
 
+
+		_startFileListingServer: function(dataCallback, addressCallback) {
+			var server = net.createServer({}, function(socket) {
+				dataCallback(this, socket);
+			});
+
+			// listen on random port
+			server.listen(function() {
+				var address = server.address();
+				console.log("opened file listing server on", address);
+
+				addressCallback(address.address, address.port);
+			});
+		},
+
+
+		_stopFileListingServer: function(server) {
+			server.close();
+		},
+
+
 		// List files from peers in the network
 		//
 		// This RPC call is special because it has more than one
@@ -550,6 +571,10 @@ function getModule(Core) {
 		// many seconds, whenever the other peers respond.
 		//
 		// This requests marks itself as finished after 30 seconds.
+		//
+		// TODO:  instead of dumping the lists into the RPC, open a socket,
+		// TODO:: tell the ip/port in the response and dump the contents (as json)
+		// TODO:: into the socket.
 		//
 		listFiles: function(networkName) {
 			var socket = this.socket;
@@ -563,41 +588,46 @@ function getModule(Core) {
 
 				var peerList = response.result;
 
-				for(var i=0; i < peerList.length; i++) {
-					var peerId = peerList[i];
-					var requestId = Core.generateRequestId();
-					var fileQuery = Core.createJsonRpcRequest('FileTransfer.listFiles', [], requestId);
+				self._startFileListingServer(function(server, listSocket) {
+					var listenTimeout = 30000; // How many msec we listen for files
 
-					// FIXME should probably not access node directly
-					if(peerId == self.peersModule.obj.node.id) {
-						console.log("listFiles: ignoring self.");
-						continue;
-					}
+					for(var i=0; i < peerList.length; i++) {
+						var peerId = peerList[i];
+						var requestId = Core.generateRequestId();
+						var fileQuery = Core.createJsonRpcRequest('FileTransfer.listFiles', [], requestId);
 
-					self._registerOwnRequest(requestId, function(response) {
-						if(response.result !== undefined) {
-							socket.write(Core.createJsonRpcResponse(moduleReqId, response.result));
-						} else {
-							// Ignore failing requests here, just log them for debug purposes.
-							console.log("Missed file request: "+response);
+						// FIXME should probably not access node directly
+						if(peerId == self.peersModule.obj.node.id) {
+							console.log("listFiles: ignoring self.");
+							continue;
 						}
 
-						// Stop listening after 30 seconds
-						setTimeout(function() {
-							self._deleteOwnDownloadRequest(requestId);
-						}, 30000);
-					});
+						self._registerOwnRequest(requestId, function(response) {
+							if(response.result !== undefined) {
+								listSocket.write(JSON.stringify(response.result) + "\n");
+							} else {
+								// Ignore failing requests here, just log them for debug purposes.
+								console.log("Missed file request: "+response);
+							}
 
-					console.log("Sending listFiles request to",peerId,":",fileQuery);
+							// Stop listening after 30 seconds
+							setTimeout(function() {
+								self._deleteOwnDownloadRequest(requestId);
+							}, listenTimeout);
+						});
 
-					Core.callRpcMethodLocal("Peers.sendMessage", [peerId, fileQuery]);
-				}
+						console.log("Sending listFiles request to",peerId,":",fileQuery);
+						Core.callRpcMethodLocal("Peers.sendMessage", [peerId, fileQuery]);
+					}
+
+					setTimeout(function() {
+						self._stopFileListingServer(server);
+					}, listenTimeout);
+				},
+				function(ip, port) {
+					answerRequest(socket, Core.createJsonRpcResponse(moduleReqId, [ip,port]));
+				});
 			});
-
-			// Timeout for finishing this request.
-			setTimeout(function() {
-				Core.callRpcMethodLocal("Core.finishRequest", [moduleReqId]);
-			}, 30000);
 		},
 	};
 
