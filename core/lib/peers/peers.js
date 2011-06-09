@@ -369,7 +369,6 @@ function getModule(Core) {
 		_addPeerToNetwork: function(networkName, peerId) {
 			var peer = this;
 			var network = peer.networks[networkName];
-			var peerListKey = networkPeersKey(networkName);
 
 			console.log('_addPeerToNetwork(',networkName,',',peerId,')');
 
@@ -634,7 +633,7 @@ function getModule(Core) {
 					return;
 				}
 
-				console.log(rootPeer);
+				console.log("ROOT PEER IS:",rootPeer);
 
 				// Join a node from the network, send join request to the node.
 				peer.node.join(rootPeer.ip, rootPeer.port, function(success, peers) {
@@ -653,7 +652,11 @@ function getModule(Core) {
 
 					// FIXME:  experimental. It's not guaranteed that the first peer is the
 					// FIXME:: network owner. This should be verified.
-					rootPeer.dht_id = peers[0];
+					// Fallback to an ID from the network and ask him to join us.
+					// TODO every peer should be able to accept new peers!
+					if(peers.indexOf(rootPeer.dht_id) < 0) {
+						rootPeer.dht_id = peers[0];
+					}
 
 					// Register handler for join request response.
 					peer._addPendingRequest(requestId, function(response, error) {
