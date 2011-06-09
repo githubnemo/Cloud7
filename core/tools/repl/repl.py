@@ -1,6 +1,7 @@
 #!/usr/bin/env python
 
 import os
+import sys
 import readline
 
 # Local imports
@@ -63,7 +64,7 @@ def main():
 	core = Core()
 
 	# experimental: execute connect command on start
-	c.cmdConnect(core, [])
+	c.cmdConnect(core, ["connect"] + sys.argv[1:2])
 
 	while True:
 		try:
