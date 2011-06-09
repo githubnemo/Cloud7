@@ -2,6 +2,7 @@ import sys
 
 from jsonrpc import *
 from transport import TransportTcpIpSendReceive
+import filelist
 
 def cmdBindToEvent(core, argv):
 	if len(argv) < 3:
@@ -59,7 +60,10 @@ def cmdFileList(core, argv):
 		print "Usage: fileList <networkName>"
 		return
 
-	print "FTLF:",getattr(core, "FileTransfer.listFiles")(argv[1])
+	(ip,port) = getattr(core, "FileTransfer.listFiles")(argv[1])
+
+	print "FTLF:", ip, port
+	filelist.show(ip, port)
 
 
 def cmdFireEvent(core, argv):
