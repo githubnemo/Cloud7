@@ -181,20 +181,18 @@ function getModule(Core) {
 			} else if(self.ownRequests[jsonRpcResponse.id]) {
 				// Call responsible callback and remove request from request map
 
-				self.ownRequests[jsonRpcResponse.id](jsonRpcResponse);
-
-				self._deleteOwnDownloadRequest(jsonRpcResponse.id);
+				self.ownRequests[jsonRpcResponse.id].callback(jsonRpcResponse);
 			}
 		},
 
 
 		_networkJoined: function(networkName) {
-			this._startPublishingFileList(networkName);
+			this.module.obj._startPublishingFileList(networkName);
 		},
 
 
 		_networkLeft: function(networkName) {
-			this._stopPublishingFileList(networkName);
+			this.module.obj._stopPublishingFileList(networkName);
 		},
 
 
@@ -558,8 +556,10 @@ function getModule(Core) {
 			var moduleReqId = this.requestId;
 			var self = this.module.obj;
 
-			Core.callRpcMethodLocal("Peers.listPeers", [], function(response) {
+			Core.callRpcMethodLocal("Peers.listPeers", [networkName], function(response) {
 				// TODO handle error
+
+				console.log("listFiles: listPeers result:", networkName, response);
 
 				var peerList = response.result;
 
@@ -568,6 +568,12 @@ function getModule(Core) {
 					var requestId = Core.generateRequestId();
 					var fileQuery = Core.createJsonRpcRequest('FileTransfer.listFiles', [], requestId);
 
+					// FIXME should probably not access node directly
+					if(peerId == self.peersModule.obj.node.id) {
+						console.log("listFiles: ignoring self.");
+						continue;
+					}
+
 					self._registerOwnRequest(requestId, function(response) {
 						if(response.result !== undefined) {
 							socket.write(Core.createJsonRpcResponse(moduleReqId, response.result));
@@ -575,7 +581,14 @@ function getModule(Core) {
 							// Ignore failing requests here, just log them for debug purposes.
 							console.log("Missed file request: "+response);
 						}
+
+						// Stop listening after 30 seconds
+						setTimeout(function() {
+							self._deleteOwnDownloadRequest(requestId);
+						}, 30000);
 					});
+
+					console.log("Sending listFiles request to",peerId,":",fileQuery);
 
 					Core.callRpcMethodLocal("Peers.sendMessage", [peerId, fileQuery]);
 				}
