@@ -242,6 +242,8 @@ function getModule(Core) {
 
 		// File list answers can be split up to many lists. The receiver must be
 		// prepared to receive a bunch of lists under the same request id.
+		//
+		// TODO there are many empty lists transmitted. Investigate!
 		_answerListFilesRequest: function(senderId, request) {
 			var lists = splitInLists(this.publicFiles.map(function(e) { return e.file; }), 100);
 
@@ -347,6 +349,26 @@ function getModule(Core) {
 			}
 
 			return readPublicPaths(this.shareFolder);
+		},
+
+
+		_startFileListingServer: function(dataCallback, addressCallback) {
+			var server = net.createServer({}, function(socket) {
+				dataCallback(this, socket);
+			});
+
+			// listen on random port
+			server.listen(function() {
+				var address = server.address();
+				console.log("opened file listing server on", address);
+
+				addressCallback(address.address, address.port);
+			});
+		},
+
+
+		_stopFileListingServer: function(server) {
+			server.close();
 		},
 
 
@@ -541,26 +563,6 @@ function getModule(Core) {
 
 		listMyFiles: function(networkName) {
 			// TODO
-		},
-
-
-		_startFileListingServer: function(dataCallback, addressCallback) {
-			var server = net.createServer({}, function(socket) {
-				dataCallback(this, socket);
-			});
-
-			// listen on random port
-			server.listen(function() {
-				var address = server.address();
-				console.log("opened file listing server on", address);
-
-				addressCallback(address.address, address.port);
-			});
-		},
-
-
-		_stopFileListingServer: function(server) {
-			server.close();
 		},
 
 

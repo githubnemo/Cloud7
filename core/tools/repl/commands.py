@@ -54,10 +54,20 @@ def cmdExit(core, argv):
 	# not reached
 
 
+def cmdFileList(core, argv):
+	if len(argv) < 2:
+		print "Usage: fileList <networkName>"
+		return
+
+	print "FTLF:",getattr(core, "FileTransfer.listFiles")(argv[1])
+
+
 def cmdFireEvent(core, argv):
 	if len(argv) < 2:
 		print "Usage: fireEvent <eventname> <data>"
-	print "FIRE!11 >.<"
+		return
+
+	getattr(core, "Core.fireEvent")(argv[1], eval(" ".join(argv[2:])))
 
 
 def cmdHelp(commands, core, argv):

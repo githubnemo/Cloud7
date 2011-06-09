@@ -48,6 +48,7 @@ def main():
 		"disconnect":		c.cmdDisconnect,
 		"echo":				c.cmdEcho,
 		"exit": 			c.cmdExit,
+		"filelist":			c.cmdFileList,
 		"fire":				c.cmdFireEvent,
 		"help":				c.cmdHelp,
 		"registerModule":	c.cmdRegisterModule
