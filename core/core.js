@@ -756,6 +756,12 @@ var core = new Core(function() {
 		console.log("alternative core port:", corePort)
 	}
 
+
+	process.on('uncaughtException', function(exception) {
+		// TODO send general error event?
+		console.log("UNCAUGHT EXCEPTION:", exception, "\nStacktrace:\n", exception.stack);
+	});
+
 	// Setup RPC server
 	this.server = net.createServer(function (socket) {
 
