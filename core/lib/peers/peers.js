@@ -43,6 +43,15 @@ var querystring = require('querystring');
 
 var cloud7tracker = 'cloud7.heroku.com';
 
+
+// cb(err, addresses)
+//
+function saveResolveHost(host, cb) {
+	var dns = require("dns");
+
+	dns.resolve4("www.google.com", cb);
+}
+
 // responseCallback(peer, error)
 //   peer: {ip: ..., port: ..., id: ...}
 //   error: Exception or null
@@ -67,23 +76,35 @@ function trackerNetworkRequest(networkName, responseCallback) {
 
 		options.path += gatewayAppendix;
 
-		http.get(options, function(res) {
-			res.on('data', function(data) {
-				var peer;
-				try {
-					peer = JSON.parse(data);
-				} catch(e) {
-					return responseCallback(null, e);
-				}
+		function networkRequest() {
+			http.get(options, function(res) {
+				res.on('data', function(data) {
+					var peer;
+					try {
+						peer = JSON.parse(data);
+					} catch(e) {
+						return responseCallback(null, e);
+					}
 
-				// XXX keep status? not specified!
-				if(peer.status !== undefined) {
-					responseCallback(null, peer.status);
-				} else {
-					responseCallback(peer, null);
-				}
+					// XXX keep status? not specified!
+					if(peer.status !== undefined) {
+						responseCallback(null, peer.status);
+					} else {
+						responseCallback(peer, null);
+					}
+				});
 			});
+		}
+
+		saveResolveHost(cloud7tracker, function(err,_) {
+			if(err) {
+				console.log("Error resolving cloud7 tracker host:",err);
+				responseCallback(null, err);
+			} else {
+				networkRequest();
+			}
 		});
+
 	});
 }
 
@@ -96,16 +117,28 @@ function trackerNetworkList(responseCallback) {
 		path: '/networks',
 		method: 'GET',
 	};
-	http.get(options, function(res) {
-		res.on('data', function(data) {
-			var list;
-			try {
-				list = JSON.parse(data);
-			} catch(e) {
-				return responseCallback(null, e);
-			}
-			responseCallback(list, null);
+
+	function getNetworkList() {
+		http.get(options, function(res) {
+			res.on('data', function(data) {
+				var list;
+				try {
+					list = JSON.parse(data);
+				} catch(e) {
+					return responseCallback(null, e);
+				}
+				responseCallback(list, null);
+			});
 		});
+	}
+
+	saveResolveHost(cloud7tracker, function(err,_) {
+		if(err) {
+			console.log("Error resolving cloud7 tracker host:",err);
+			responseCallback(null, err);
+		} else {
+			getNetworkList();
+		}
 	});
 }
 
@@ -172,7 +205,14 @@ function trackerNetworkCreate(networkName, nodePort, nodeId, responseCallback) {
 		});
 	}
 
-	getRegistrationData();
+	saveResolveHost(cloud7tracker, function(err,_) {
+		if(err) {
+			console.log("Error resolving cloud7 tracker host:",err);
+			responseCallback(null, err);
+		} else {
+			getRegistrationData();
+		}
+	});
 }
 
 function networkKey(networkName) { return makeBuffer(networkName); }
