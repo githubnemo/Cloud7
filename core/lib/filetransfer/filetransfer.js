@@ -84,8 +84,8 @@ function getModule(Core) {
 		this.leaveEventId = Core.bindToEvent("Peers.leftNetwork", "FileTransfer", "_networkLeft");
 
 		// Folder which is public for all other peers
-		// TODO configurable somehow
-		this.shareFolder = "/home/nemo/Downloads/"
+		// TODO configurable over conf module
+		this.shareFolder = process.env["CLOUD7_SHARE_FOLDER"]
 
 		// Shared/Public files
 		// { file: <filename>, folder: <path to folder> }
@@ -287,6 +287,11 @@ function getModule(Core) {
 		_startPublicFileWatcher: function() {
 			var self = this;
 
+			if(!this.shareFolder) {
+				console.log("Not watching files because no shareFolder is set.");
+				return;
+			}
+
 			return fs.watchFile(this.shareFolder, function(curr,prev) {
 				console.log("Refreshing public files...");
 				// TODO different networks should have different public files
@@ -346,7 +351,20 @@ function getModule(Core) {
 			function readPublicPaths(folder) {
 				var publicFiles = [];
 
-				var files = fs.readdirSync(folder);
+				if(!folder) {
+					console.log("Not reading files because no shareFolder is set.");
+					return [];
+				}
+
+				var files = [];
+
+				try {
+					files = fs.readdirSync(folder);
+				} catch(e) {
+					// TODO report error to user somehow?
+					console.log("_getPublicFiles: Error while reading", folder, ":", e);
+					return publicFiles;
+				}
 
 				for(var i=0; i < files.length; i++) {
 					var path = folder + "/" + files[i];
