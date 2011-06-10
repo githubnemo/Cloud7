@@ -771,8 +771,6 @@ function getModule(Core) {
 		DHTput: function(key, data, ttl) {
 			var peer = this.module.obj;
 
-			// TODO: check if it's already a buffer
-
 			peer.node.put(makeBuffer(key), makeBuffer(data), ttl);
 
 			answerRequest(this.socket, Core.createJsonRpcResponse(this.requestId, true));
@@ -781,16 +779,23 @@ function getModule(Core) {
 
 		// Retrieve a key from the DHT.
 		// Retrieved values are converted to string to be compatible with JSON RPC.
+		//
+		// Empty list supplied if no value is found.
 		DHTget: function(key) {
 			var peer = this.module.obj;
 			var moduleRequestId = this.requestId;
 			var socket = this.socket;
 
 			peer.node.get(makeBuffer(key), function(ok, results) {
-				for(var i=0; i < results.length; i++) {
-					results[i] = results[i].toString();
+				if(!ok) {
+					answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, []));
+				} else {
+					var resultStrings = new Array();
+					for(var i=0; i < results.length; i++) {
+						resultStrings[i] = results[i].toString();
+					}
+					answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, resultStrings));
 				}
-				answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, results));
 			});
 		},
 
