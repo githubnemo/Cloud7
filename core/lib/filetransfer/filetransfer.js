@@ -21,6 +21,15 @@ function networkFileHash(networkName, fileHash) {
 //
 // Default limitPerList: 5000 (byte)
 //
+// Tests:
+/*
+String.prototype.repeat = function(times) { var s=""; for(var i=0; i<times; i++) s+=this; return s; }
+
+console.log( splitInLists(["A".repeat(40), "B".repeat(40), "C".repeat(40)], 40) ); // [[A...],[B...],[C...]]
+console.log( splitInLists(["A".repeat(40), "B".repeat(40), "C".repeat(40)], 80) ); // [[A...B...],[C...]]
+console.log( splitInLists(["A".repeat(40), "B".repeat(40), "C".repeat(40), "D".repeat(40)], 80) ); // [[A...B...],[C...D...]]
+console.log( splitInLists(["A".repeat(80), "B".repeat(40), "C".repeat(40)], 80) ); // [[A...],[B...C...]]
+*/
 function splitInLists(list, limitPerList) {
 	if(limitPerList == undefined) {
 		limitPerList = 5000; // byte
@@ -35,21 +44,27 @@ function splitInLists(list, limitPerList) {
 			throw "element " + i + " is bigger than limit per list"
 		}
 
-		if(currentCount+list[i].length == limitPerList) {
-			lists = lists.concat([list.slice(lastEnd, i)]);
+		if(currentCount+list[i].length == limitPerList) { // fits exactly (fills up the list)
+			lists = lists.concat([list.slice(lastEnd, i+1)]);
 			lastEnd = i+1;
 			currentCount = 0;
-		} else if(currentCount+list[i].length > limitPerList) {
-			lists = lists.concat([list.slice(lastEnd, i-1)]);
-			lastEnd = i+1;
+		} else if(currentCount+list[i].length > limitPerList) { // does not fit anymore
+			lists = lists.concat([list.slice(lastEnd, i)]);
+			lastEnd = i;
 			currentCount = list[i].length;
-		} else {
+		} else { // fits
 			currentCount += list[i].length;
 		}
 	}
 
+	// Apply pending lists
+	if(currentCount != 0) {
+		lists = lists.concat([list.slice(lastEnd, i)]);
+	}
+
 	return lists;
 }
+
 
 function getModule(Core) {
 
