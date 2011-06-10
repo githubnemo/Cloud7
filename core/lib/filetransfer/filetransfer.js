@@ -1,5 +1,6 @@
 var net = require('net');
 var fs = require('fs');
+var path = require('path');
 var crypto = require('crypto');
 
 // Hash for a specific file in the network
@@ -94,7 +95,10 @@ function getModule(Core) {
 		//		sourcePeer: <peer id to fetch from>,
 		//		fileName: <name of the file to download>,
 		//		destinationPath: <path to save the file to>,
-		//		callback: <function to be called if response is received>
+		//		callback: <function to be called if response is received>,
+		//		received: <bytes received so far>,
+		//		size: <bytes in total>,
+		//		checksum: <checksum of file>
 		// } }
 		this.ownDownloadRequests = {};
 
@@ -117,7 +121,7 @@ function getModule(Core) {
 
 
 	// A -> B [getFile(Foo, <networkName>)]
-	// B -> A [{ip: <ip>, port: <port>}]
+	// B -> A [{ip: <ip>, port: <port>, size: <bytes>, checksum: <hash>}]
 	//
 	// A [download from ip/port until finished].
 
@@ -171,12 +175,11 @@ function getModule(Core) {
 
 				try {
 					var data = JSON.parse(jsonRpcResponse.result);
-					downloadData.callback(jsonRpcResponse.id, data.ip, data.port)
+					downloadData.callback(jsonRpcResponse.id, data.ip, data.port, data.size, data.checksum)
 				} catch(e) {
 					console.log("FileTransfer: error while parsing response", jsonRpcResponse);
+					self._deleteOwnDownloadRequest(jsonRpcResponse.id);
 				}
-
-				self._deleteOwnDownloadRequest(jsonRpcResponse.id);
 
 			} else if(self.ownRequests[jsonRpcResponse.id]) {
 				// Call responsible callback and remove request from request map
@@ -224,8 +227,9 @@ function getModule(Core) {
 				return;
 			}
 
+			var filePath = path.join(file.folder,file.file);
 
-			this._startFileServer(file, function(ip, port) {
+			this._startFileServer(filePath, function(ip, port) {
 				if(ip == null || port == null) {
 					// Error occured
 					console.log("Error while starting file server");
@@ -389,12 +393,22 @@ function getModule(Core) {
 
 					console.log("Got peerId", peerId, networkName);
 
-					for(var i=0; i < self.publicFiles.length; i++) {
-						var fileObj = self.publicFiles[i];
+					function add(i) {
+						if(i >= self.publicFiles.length) {
+							return;
+						}
 
-						var fileHash = networkFileHash(networkName, fileObj.file);
-						Core.callRpcMethodLocal("Peers.DHTput", [fileHash, peerId, self.fileListTTL / 1000]);
+						var fileObj = self.publicFiles[i];
+						var fileHash = networkFileHash(networkName, self._fileNameHash(fileObj.file));
+
+						//console.log("adding",fileHash,"(",fileObj.file,")to DHT")
+
+						Core.callRpcMethodLocal("Peers.DHTput", [fileHash, peerId, self.fileListTTL / 1000], function() {
+							setTimeout(add, 0, i+1);
+						});
 					}
+
+					add(0);
 				});
 			}
 
@@ -425,6 +439,7 @@ function getModule(Core) {
 			var fileNetworkHash = networkFileHash(networkName, fnHash);
 
 			Core.callRpcMethodLocal("Peers.DHTget", [fileNetworkHash], function(response) {
+				console.log("DHTget(",fileNetworkHash,"):",response);
 				callback(response.result);
 			});
 		},
@@ -459,8 +474,13 @@ function getModule(Core) {
 
 
 		// Handles the answer of uploading peer
-		_downloadResponseHandler: function(id, ip, port) {
+		// TODO use checksum to validate downloaded file
+		_downloadResponseHandler: function(id, ip, port, size, checksum) {
 			var downloadData = this.ownDownloadRequests[id];
+
+			downloadData.size = size;
+			downloadData.received = 0;
+			downloadData.checksum = checksum;
 
 			var path = downloadData.destinationPath;
 			var stream = fs.createWriteStream(path);
@@ -471,12 +491,18 @@ function getModule(Core) {
 
 			con.on('data', function(data) {
 				stream.write(data);
+				received += data.length;
 			});
 
 			con.on('end', function() {
 				stream.end();
 				stream.destroy();
 				console.log('finished downloading file to',path,'from',ip,port);
+				self._deleteOwnDownloadRequest(id);
+			});
+
+			con.on('error', function() {
+				self._deleteOwnDownloadRequest(id);
 			});
 		},
 
@@ -490,9 +516,9 @@ function getModule(Core) {
 		_startDownloadFileFromPeer: function(networkName, peerId, fileName, destinationPath, callback) {
 			var requestId = Core.generateRequestId(this.ownDownloadRequests);
 
-			var downloadRequest = createJsonRpcRequest("FileTransfer.getFile", [fileName, networkName], requestId);
+			var downloadRequest = Core.createJsonRpcRequest("FileTransfer.getFile", [fileName, networkName], requestId);
 
-			this._registerOwnDownloadRequest(requestId, networkName, peerId, fileName, destinationPath, _downloadResponseHandler);
+			this._registerOwnDownloadRequest(requestId, networkName, peerId, fileName, destinationPath, this._downloadResponseHandler);
 
 			Core.callRpcMethodLocal("Peers.sendMessage", [peerId, downloadRequest]);
 
@@ -528,7 +554,7 @@ function getModule(Core) {
 
 				} else {
 
-					if(networkName in response.result) {
+					if(response.result.indexOf(networkName) >= 0) {
 						// We joined the network so we can do things
 
 						self._findFileInNetwork(networkName, fileName, function(peers) {
@@ -556,7 +582,7 @@ function getModule(Core) {
 
 						answerRequest(socket, Core.createJsonRpcError(
 							moduleRequestId,
-							"Network "+networkName+" is not joined.",
+							"Network "+networkName+" is not joined. ("+response.result+")",
 							Core.json_errors.internal_error));
 					}
 
@@ -569,17 +595,32 @@ function getModule(Core) {
 		},
 
 
+		downloadInfo: function(id) {
+			var self = this.module.obj;
+			if(self.ownDownloadRequests[id]) {
+				var info = {
+					received: self.ownDownloadRequests[id].received,
+					size: self.ownDownloadRequests[id].size,
+					checksum: self.ownDownloadRequests[id].checksum,
+					name: self.ownDownloadRequests[id].fileName,
+					destination: self.ownDownloadRequests[id].destinationPath,
+					network: self.ownDownloadRequests[id].network
+				};
+
+				answerRequest(this.socket, Core.createJsonRpcResponse(this.requestId, info));
+			} else {
+				answerRequest(this.socket, Core.createJsonRpcError(this.requestId, "Download not found.", Core.json_errors.internal_error));
+			}
+		},
+
+
 		// List files from peers in the network
 		//
-		// This RPC call is special because it has more than one
-		// response. Once fired, the respones can come after
-		// many seconds, whenever the other peers respond.
+		// Returns ip/port of a socket on which the search results (JSON lists)
+		// are send to.
 		//
-		// This requests marks itself as finished after 30 seconds.
-		//
-		// TODO:  instead of dumping the lists into the RPC, open a socket,
-		// TODO:: tell the ip/port in the response and dump the contents (as json)
-		// TODO:: into the socket.
+		// After a timeout (30 seconds) 'END\n' is send to the
+		// socket and the socket is closed.
 		//
 		listFiles: function(networkName) {
 			var socket = this.socket;
