@@ -3,7 +3,7 @@ require './rake-tools/util.rb'
 
 include Util
 
-task :default => [ "build:all" ]
+task :default => [ "install" ]
 
 $root_dir = Dir.pwd
 $temp_dir = Dir.pwd + "/_temp"
@@ -227,7 +227,7 @@ namespace :carrier do
   end
 
   # this just initializes the submodule
-  task :install => [:init] do
+  task :install => [:init, "carrier:build" ] do
     notice "Install node-carrier"
 
     carrier_dir = "#{$root_dir}/core/deps/carrier"
