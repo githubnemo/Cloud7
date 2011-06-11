@@ -10,11 +10,21 @@ no_nodejs() {
 	exit 1
 }
 
-if [ -z "$NODE_ROOT" ] && ! which node >/dev/null; then
-	no_nodejs
-elif [ -z "$NODE_ROOT" ]; then
-	NODE_ROOT=$(dirname $(which node))
-fi
+NODE_ROOT="$(pwd)/$(dirname $0)/../node/"
+
+DYLD_LIBRARY_PATH=$LD_LIBRARY_PATH:"$(pwd)/$(dirname $0)/lib/peers/libcage/src"
+export DYLD_LIBRARY_PATH
+
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:"$(pwd)/$(dirname $0)/lib/peers/libcage/src"
+export LD_LIBRARY_PATH
+
+echo $LD_LIBRARY_PATH
+
+#if [ -z "$NODE_ROOT" ] && ! which node >/dev/null; then
+#	no_nodejs
+#elif [ -z "$NODE_ROOT" ]; then
+#	NODE_ROOT=$(dirname $(which node))
+#fi
 
 # Check for existance of executable
 if [ -z "$NODE_ROOT" ] || ! [ -e "$NODE_ROOT/node" ]; then
@@ -25,9 +35,9 @@ trap "echo \"Aborting execution...\"" 2
 
 echo "Starting core\n-------------"
 if [ -n "$DEBUG" ]; then
-	gdb -args $NODE_ROOT/node core.js $@
+	gdb -args $NODE_ROOT/node "$(pwd)/$(dirname $0)/core.js" $@
 else
-	$NODE_ROOT/node core.js $@
+	$NODE_ROOT/node "$(pwd)/$(dirname $0)/core.js" $@
 fi
 res=$?
 echo "-------------\nCore exited"

@@ -54,7 +54,6 @@ module Util
   def applyPatch(target, patchFile)
      _print "Trying to apply patch to '#{target}': ", :color => :yellow
     ret = %x[patch --ignore-whitespace -F3 -sN #{target}  < #{patchFile} 2>&1]
-    notice ret
     if not ret =~ /failed|malformed/i
       _puts("success", :color => :green, :noWrap => true)
     else

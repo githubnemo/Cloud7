@@ -3,7 +3,7 @@ require './rake-tools/util.rb'
 
 include Util
 
-task :default => [ "build:all" ]
+task :default => [ "install" ]
 
 $root_dir = Dir.pwd
 $temp_dir = Dir.pwd + "/_temp"
@@ -83,6 +83,26 @@ namespace :node do
 
   end
 
+
+  task :install => [:init, "node:build"] do
+    notice "Removing old node installation from Cloud7 directory"
+    FileUtils.rm_rf "#{$root_dir}/node" or
+      error("Could not delete '#{$root_dir}/node'")
+
+    node_dir = "#{getNodeDir()}/build/default"
+
+
+    begin
+      FileUtils.cp_r(node_dir, "#{$root_dir}/node")
+    rescue Exception => e
+      error("Could not copy '#{node_dir}' to '#{$root_dir}'")
+    end
+
+    FileUtils.chmod 0755, "#{$root_dir}/node/node"
+
+    msg("Successfully installed node into #{$root_dir}")
+  end
+
 end
 
 
@@ -95,7 +115,7 @@ namespace :libcage do
   task :build => [ :init, "node:build" ] do
     msg "Building libcage"
 
-    doSystem('git clone -b master git://github.com/githubnemo/libcage.git libcage') unless
+    doSystem('git clone -b master https://github.com/githubnemo/libcage.git libcage') unless
       File.directory?('libcage')
 
     notice "Changing to ./libcage/"
@@ -112,54 +132,150 @@ namespace :libcage do
     Dir.chdir('../')
   end
 
+
   task :clean do
     libcage_dir = "#{$temp_dir}/libcage"
     if Dir.exists?(libcage_dir)
       Dir.chdir(libcage_dir)
-      doSystem("make clean")
+      FileUtils.rm_rf libcage_dir or
+        error("Could not delete #{libcage_dir}")
     else
-      error "libcage directory does not exist yet (#{libcage_dir})"
+      notice "libcage directory does not exist yet (#{libcage_dir})"
     end
+
+    msg("Successfully cleaned the libcage target")
+  end
+
+
+  task :install => [:init, "libcage:build"] do
+    cloud7_peers = "#{$root_dir}/core/lib/peers/"
+
+    notice "Removing old libcage installation from Cloud7 directory"
+    FileUtils.rm_rf "#{cloud7_peers}/libcage" or
+      error("Could not delete '#{cloud7_peers}/libcage'")
+
+
+    libcage_dir = "#{$temp_dir}/libcage"
+
+    begin
+      FileUtils.cp_r(libcage_dir, cloud7_peers)
+    rescue Exception => e
+      error("Could not copy '#{libcage_dir}' to '#{cloud7_peers}'")
+    end
+
+    msg("Successfully installed libcage into #{cloud7_peers}")
   end
 
 
 end # Namespace :libcage
-
-
 
 namespace :nodedht do
 
   task :build => [ :init, "libcage:build" ] do
     msg "Building node-dht"
 
-    doSystem('git clone git://github.com/githubnemo/node-dht.git node-dht') unless
+    doSystem('git clone https://github.com/githubnemo/node-dht.git node-dht') unless
       File.directory?('node-dht')
 
     notice "Changing to ./node-dht/"
     Dir.chdir( './node-dht/' )
 
     node_dir = getNodeDir()
-    doSystem("CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{$root_dir}/_temp/libcage/src/' node-waf configure build")
+    doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure build -v")
 
     Dir.chdir( '..' )
+  end
+
+
+  task :clean => [ :init ] do
+    Dir.chdir( './node-dht/' )
+    doSystem("node-waf clean")
+  end
+
+
+  task :install => [:init, "nodedht:build"] do
+    cloud7_peers = "#{$root_dir}/core/lib/peers/"
+
+    notice "Removing old nodedht installation from Cloud7 directory"
+    FileUtils.rm_rf "#{cloud7_peers}/node-dht" or
+      error("Could not delete '#{cloud7_peers}/libcage'")
+
+
+    nodedht_dir = "#{$temp_dir}/node-dht"
+
+    begin
+      FileUtils.cp_r(nodedht_dir, cloud7_peers)
+    rescue Exception => e
+      error("Could not copy '#{nodedht_dir}' to '#{cloud7_peers}'")
+    end
+
+    msg("Successfully installed node-dht into #{cloud7_peers}")
   end
 
 end # Namespace :nodedht
 
 
-####
-# Convenience namespace
-####
+namespace :carrier do
 
-namespace :build do
+  task :build => [ :init ] do
+    msg "Fetching carrier"
 
-  task :all => [ :init, "node:build", "libcage:build" ] do
-    msg "All stuff built"
+    doSystem('git clone https://github.com/pgte/carrier.git carrier') unless
+      File.directory?('carrier')
+
+    Dir.chdir( '..' )
   end
 
-  task :clean => [ "node:clean", "libcage:clean" ] do
-    msg "Cleaned all targets"
+  # this just initializes the submodule
+  task :install => [:init, "carrier:build" ] do
+    notice "Install node-carrier"
+
+    carrier_dir = "#{$root_dir}/core/deps/carrier"
+
+    notice "Removing old carrier installation from Cloud7 directory"
+    FileUtils.rm_rf carrier_dir or
+      error("Could not delete '#{carrier_dir}'")
+
+
+    carrier_temp_dir = "#{$temp_dir}/carrier"
+
+    begin
+      FileUtils.cp_r(carrier_temp_dir, carrier_dir)
+    rescue Exception => e
+      error("Could not copy '#{carrier_temp_dir}' to '#{carrier_dir}'")
+    end
+
+    msg("Successfully installed carrier into #{carrier_dir}")
   end
 
+
+
+  task :clean do
+    carrier_dir = "#{$temp_dir}/carrier"
+
+    if Dir.exists?(carrier_dir)
+      FileUtils.rm_rf carrier_dir or
+        error("Could not delete #{carrier_dir}")
+    else
+      notice "carrier directory does not exist yet (#{carrier_dir})"
+    end
+
+    msg("Successfully cleaned the carrier target")
+  end
+
+end # Namespace: :carrier
+
+
+
+task :all => [ :init, "node:build", "libcage:build", "nodedht:build", "carrier:build" ] do
+  msg "All stuff built"
+end
+
+task :clean => [ "node:clean", "libcage:clean", "nodedht:clean", "carrier:clean" ] do
+  msg "Cleaned all targets"
+end
+
+task :install => [ :init, "node:install", "libcage:install", "nodedht:install", "carrier:install"] do
+  msg "All installed"
 end
 
