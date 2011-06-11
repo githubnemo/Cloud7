@@ -188,13 +188,31 @@ function getModule(Core) {
 				// Handle it, it's for us :)
 				var downloadData = self.ownDownloadRequests[jsonRpcResponse.id];
 
-				try {
-					var data = JSON.parse(jsonRpcResponse.result);
-					downloadData.callback(jsonRpcResponse.id, data.ip, data.port, data.size, data.checksum)
-				} catch(e) {
-					console.log("FileTransfer: error while parsing response", jsonRpcResponse);
-					self._deleteOwnDownloadRequest(jsonRpcResponse.id);
+
+				if(jsonRpcResponse.result) {
+					var data = null;
+
+						data = jsonRpcResponse.result;
+
+					if(data.ip == undefined || data.port == undefined ||
+					   data.size == undefined || data.checksum == undefined) {
+
+						console.log("FileTransfer: Missing data fields (", data, ")");
+						self._deleteOwnDownloadRequest(jsonRpcResponse.id);
+					} else {
+
+						downloadData.callback.apply(self, [jsonRpcResponse.id, data.ip, data.port, data.size, data.checksum])
+					}
+
+				} else {
+					if(jsonRpcResponse.error != undefined) {
+						// TODO report error via event or so
+						console.log("FileTransfer: Error: ", jsonRpcResponse.error);
+					} else {
+						console.log("FileTransfer: Ill-formed message: ", data);
+					}
 				}
+
 
 			} else if(self.ownRequests[jsonRpcResponse.id]) {
 				// Call responsible callback and remove request from request map
@@ -216,7 +234,8 @@ function getModule(Core) {
 
 		_getPublicFile: function(networkName, fileName) {
 			// TODO make depending on networks
-			return this.publicFiles[fileName];
+			console.log("_getPublicFile(",networkName,",",fileName,"):", this.publicFiles);
+			return this.publicFiles.filter(function(e) { if(e.file == fileName) return e; });
 		},
 
 
@@ -236,15 +255,17 @@ function getModule(Core) {
 			var file = this._getPublicFile(network, filename);
 
 			if(file === undefined) {
-				var error = Core.createJsonRpcError(request.id, "File not found", Core.json_errors.internal_error);
+				var error = Core.createJsonRpcError(request.id, "File not found in network "+network+": "+filename, Core.json_errors.internal_error);
 				Core.callRpcMethodLocal("Peers.sendMessage", [senderId, error]);
 
 				return;
 			}
 
+			console.log("ATTEMPT TO SERVE FILE", file);
+
 			var filePath = path.join(file.folder,file.file);
 
-			this._startFileServer(filePath, function(ip, port) {
+			this._startFileServer(filePath, function(ip, port, file) {
 				if(ip == null || port == null) {
 					// Error occured
 					console.log("Error while starting file server");
@@ -252,7 +273,13 @@ function getModule(Core) {
 					return;
 				}
 
-				var response = Core.createJsonRpcResponse(request.id, serverObj);
+				console.log("IN SERVER HANDLER FOR FILE", file);
+
+				var fileSize = 4096; // TODO read file size
+				var fileChecksum = "f8a9fcd0170d9ef0f03891f72f21568d6895e66a"; // TODO compute sha1 checksum
+
+				var downloadInfo = {ip: ip, port: port, size: fileSize, checksum: fileChecksum};
+				var response = Core.createJsonRpcResponse(request.id, downloadInfo);
 
 				Core.callRpcMethodLocal("Peers.sendMessage", [senderId, response]);
 			});
@@ -302,7 +329,7 @@ function getModule(Core) {
 
 		// Serve the file given.
 		//
-		// addressCallback signature: addressCallback(ip, port)
+		// addressCallback signature: addressCallback(ip, port, filePath)
 		//
 		// After successful creation, addressCallback is called with the
 		// address data. If creation fails, ip and port is null.
@@ -327,13 +354,15 @@ function getModule(Core) {
 				});
 			});
 
+			var self = this;
+
 			// listen on random port
 			server.listen(function() {
 				var address = server.address();
 				console.log("opened file server on", address);
 
-				this.activeServers[fileLocation] = server;
-				addressCallback(address.address, address.port);
+				self.activeServers[fileLocation] = server;
+				addressCallback(address.address, address.port, fileLocation);
 			});
 		},
 
@@ -414,7 +443,7 @@ function getModule(Core) {
 
 		// Publish public file list in the DHT
 		_startPublishingFileList: function(networkName) {
-			self = this;
+			var self = this;
 
 			console.log("_startPublishingFileList:", networkName)
 

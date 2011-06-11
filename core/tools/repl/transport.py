@@ -1,6 +1,7 @@
 import threading
 
 from jsonrpc import *
+import socket
 
 class ServeThread(threading.Thread):
 	def __init__(self, transport, handler, maxRequests):
@@ -11,17 +12,15 @@ class ServeThread(threading.Thread):
 		self.maxRequests = maxRequests
 		self._stop = False
 
-		import socket
-		(self.wakeupSender, self.wakeupReceiver) = socket.socketpair()
-
 	def stop(self):
 		self._stop = True
+		self.transport.s.shutdown(socket.SHUT_RD)
 		print "stopping"
-		self.wakeupSender.send("x")
 		self.join()
 
 	def run(self):
 		import select
+		import socket
 
 		transport = self.transport
 		handler = self.handler
@@ -31,11 +30,14 @@ class ServeThread(threading.Thread):
 
 		try:
 			while not self._stop:
-				sockets = select.select((self.transport.s, self.wakeupReceiver), (), ())[0]
+				sockets = select.select((self.transport.s,), (), ())[0]
 
-				if not sockets or self.wakeupReceiver in sockets:
+				if not sockets:
 					break
 
+				# FIXME this could cause miss of data:
+				# data available, can't dispatch, waiting for data,
+				# dispatch now possible but hangs in waiting for data
 				if transport.receiveLock.acquire(False) == False:
 					continue # don't interfere here
 

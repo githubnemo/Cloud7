@@ -536,15 +536,28 @@ function getModule(Core) {
 				peerInterval: intervalId
 			};
 
+			// Mark self as joined
+			this._addJoinedNetwork({ip: '127.0.0.1', port: this.port, dht_id: this.node.id}, name, true);
+
 			// Call initially
 			this._refreshNetworkInfo(this, name);
 		},
 
 
+		// Signature: _addJoinedNetwork(rootPeer, networkName, [noupdate])
+		//
 		// Add joined network to local network cache.
 		// Start watching the network for missing peer list.
-		_addJoinedNetwork: function(rootPeer, networkName) {
-			var intervalId = setInterval(this._checkPeerList, this.peerListLifetime, this, networkName);
+		//
+		// Network creators call this with noupdate=true.
+		//
+		_addJoinedNetwork: function(rootPeer, networkName, noupdate) {
+
+			var intervalId = -1;
+
+			if(!noupdate) {
+				setInterval(this._checkPeerList, this.peerListLifetime, this, networkName);
+			}
 
 			Core.callRpcMethodLocal("Core.fireEvent", ["Peers.joinedNetwork", [networkName]])
 

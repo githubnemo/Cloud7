@@ -369,6 +369,16 @@ var CoreModule = {
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, echoThis));
 	},
 
+	echoDelay: function(echoThis, delay) {
+		var socket = this.socket;
+		var core = this.core;
+		var id = this.requestId;
+
+		setTimeout(function() {
+			socket.write(core.createJsonRpcResponse(id, echoThis));
+		}, delay);
+	},
+
 	/*
 	 * Signature: finishRequest(id) => Void
 	 *
