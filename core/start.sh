@@ -1,10 +1,5 @@
 #!/bin/sh
 
-if [ -e "start_config" ]; then
-	echo "Reading configuration"
-	. ./start_config
-fi
-
 no_nodejs() {
 	echo "node.js not found. Configure \$NODE_ROOT in file start_config or fix your PATH"
 	exit 1
@@ -18,8 +13,12 @@ export DYLD_LIBRARY_PATH
 LD_LIBRARY_PATH=$LD_LIBRARY_PATH:"$(pwd)/$(dirname $0)/lib/peers/libcage/src"
 export LD_LIBRARY_PATH
 
-echo $LD_LIBRARY_PATH
+if [ -e "start_config" ]; then
+	echo "Reading configuration"
+	. ./start_config
+fi
 
+# Enable use of globally installed nodejs
 #if [ -z "$NODE_ROOT" ] && ! which node >/dev/null; then
 #	no_nodejs
 #elif [ -z "$NODE_ROOT" ]; then
