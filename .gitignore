@@ -4,3 +4,34 @@
 *.rar
 *.tar
 *.pyc
+
+# Cloud7 specific
+node/
+transport.log
+
+# Added by gemignore. Snippet 'Global/Eclipse'
+*.pydevproject
+.project
+.metadata
+bin/**
+tmp/**
+tmp/**/*
+*.tmp
+*.bak
+*.swp
+*~.nib
+local.properties
+.classpath
+.settings/
+.loadpath
+
+# CDT-specific
+.cproject
+
+
+# Added by gemignore. Snippet 'Global/NetBeans'
+nbproject/
+nbactions.xml
+
+# Scala-IDE specific
+.scala_dependencies
