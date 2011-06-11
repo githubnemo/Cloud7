@@ -369,7 +369,7 @@ var CoreModule = {
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, echoThis));
 	},
 
-	echoDelay: function(delay, echoThis) {
+	echoDelay: function(echoThis, delay) {
 		var socket = this.socket;
 		var core = this.core;
 		var id = this.requestId;
