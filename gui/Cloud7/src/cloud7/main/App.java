@@ -4,6 +4,8 @@
 
 package cloud7.main;
 
+import cloud7.binding.*;
+
 import org.jdesktop.application.Application;
 import org.jdesktop.application.SingleFrameApplication;
 
@@ -40,6 +42,7 @@ public class App extends SingleFrameApplication {
      * Main method launching the application.
      */
     public static void main(String[] args) {
+    	Foo.doStuff();
         launch(App.class, args);
     }
 }

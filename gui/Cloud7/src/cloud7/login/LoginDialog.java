@@ -12,9 +12,12 @@ package cloud7.login;
 
 
 import cloud7.network.Networklist;
+
 import java.awt.Dimension;
 import javax.swing.JDialog;
 import javax.swing.JFrame;
+
+import cloud7.binding.*;
 
 /**
  *

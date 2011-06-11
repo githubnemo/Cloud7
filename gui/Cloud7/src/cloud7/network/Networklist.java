@@ -11,6 +11,7 @@
 package cloud7.network;
 
 import cloud7.login.LoginDialog;
+import cloud7.binding.*;
 
 /**
  *
@@ -44,18 +45,19 @@ public class Networklist extends javax.swing.JDialog {
         setName("Form"); // NOI18N
 
         jScrollPane1.setName("jScrollPane1"); // NOI18N
-
+        
         jTable1.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {"871632876", "245"},
-                {"123312333", "140"},
-                {"123485554", "220"}
+                {"Loading..."}
             },
             new String [] {
-                "Network", "User", "Option 1", "Option 2"
+                "Network"
 
             }
         ));
+        
+        Peers.listNetworks(jTable1);
+        
         jTable1.setFocusable(false);
         jTable1.setName("jTable1"); // NOI18N
         jScrollPane1.setViewportView(jTable1);
