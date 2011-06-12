@@ -232,10 +232,13 @@ function getModule(Core) {
 		},
 
 
+		// return undefined if file is not found
 		_getPublicFile: function(networkName, fileName) {
 			// TODO make depending on networks
 			console.log("_getPublicFile(",networkName,",",fileName,"):", this.publicFiles);
-			return this.publicFiles.filter(function(e) { if(e.file == fileName) return e; });
+			var matching = this.publicFiles.filter(function(e) { if(e.file == fileName) return e; });
+			if(matching.length > 0) return matching[0];
+			return undefined;
 		},
 
 
@@ -261,9 +264,9 @@ function getModule(Core) {
 				return;
 			}
 
-			console.log("ATTEMPT TO SERVE FILE", file);
-
 			var filePath = path.join(file.folder,file.file);
+
+			console.log("ATTEMPT TO SERVE FILE", file, "path:", filePath);
 
 			this._startFileServer(filePath, function(ip, port, file) {
 				if(ip == null || port == null) {
@@ -335,9 +338,14 @@ function getModule(Core) {
 		// address data. If creation fails, ip and port is null.
 		//
 		_startFileServer: function(fileLocation, addressCallback) {
+			// FIXME this limits one download pro peer pro file
 			if(this.activeServers[fileLocation]) {
 				return;
 			}
+
+			console.log("Starting file server for", fileLocation);
+
+			var self = this;
 
 			// TODO limit max open connections
 			var server = net.createServer({}, function(socket) {
@@ -350,11 +358,13 @@ function getModule(Core) {
 						socket.write(data);
 						socket.end();
 						console.log("Transmitted file",fileLocation);
+
+						// Close server
+						this.close();
+						delete self.activeServers[fileLocation];
 					}
 				});
 			});
-
-			var self = this;
 
 			// listen on random port
 			server.listen(function() {
@@ -448,6 +458,8 @@ function getModule(Core) {
 			console.log("_startPublishingFileList:", networkName)
 
 			function fileListRefresher() {
+				// TODO:  supply file content hash for every file to distinguish
+				// TODO:: files with same name but different content
 				console.log("Refreshing file list in DHT.");
 
 				Core.callRpcMethodLocal("Peers.getMyId", [], function(response) {
@@ -538,6 +550,7 @@ function getModule(Core) {
 		// Handles the answer of uploading peer
 		// TODO use checksum to validate downloaded file
 		_downloadResponseHandler: function(id, ip, port, size, checksum) {
+			var self = this;
 			var downloadData = this.ownDownloadRequests[id];
 
 			downloadData.size = size;
@@ -553,13 +566,13 @@ function getModule(Core) {
 
 			con.on('data', function(data) {
 				stream.write(data);
-				received += data.length;
+				downloadData.received += data.length;
 			});
 
 			con.on('end', function() {
 				stream.end();
 				stream.destroy();
-				console.log('finished downloading file to',path,'from',ip,port);
+				console.log('finished downloading file to',path,'from',ip,port,"download info:",downloadData);
 				self._deleteOwnDownloadRequest(id);
 			});
 
