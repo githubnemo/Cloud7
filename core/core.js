@@ -145,6 +145,20 @@ function Core(init) {
 
 Core.prototype = {
 
+	// createError(id, message[, map]) => Array
+	//
+	// Returns an array which fits the signature of the
+	// Core.error event.
+	createError: function(id, message) {
+		var error = [id, {message: message}];
+		if(arguments[2] != undefined) {
+			for(var prop in arguments[2]) {
+				error[1][prop] = arguments[2][prop];
+			}
+		}
+		return error;
+	},
+
 	// {method:"Core.registerModule", params:[{"name":"Test", "methods":["testString","testInt"]}], id:133}
 
 	registerLocalModule: function(name, obj) {
@@ -757,6 +771,15 @@ var core = new Core(function() {
 	this.registerLocalModule("Config", conf.getModule(this));
 	this.registerLocalModule("Peers", peers.getModule(this));
 	this.registerLocalModule("FileTransfer", filetransfer.getModule(this));
+
+	if(process.env['CLOUD7_CORE_TEST'] != undefined) {
+		var test = require('./lib/test/test.js');
+		var TestModule = test.getModule(this);
+
+		TestModule.invokeTests();
+
+		process.exit();
+	}
 
 	this.getModule("Core").obj.fireEvent("Core.initDone", []);
 

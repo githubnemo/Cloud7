@@ -84,18 +84,18 @@ function getModule(Core) {
 		this.leaveEventId = Core.bindToEvent("Peers.leftNetwork", "FileTransfer", "_networkLeft");
 
 		// Folder which is public for all other peers
+		// { network: folder }
 		// TODO configurable over conf module
-		this.shareFolder = process.env["CLOUD7_SHARE_FOLDER"]
+		this.shareFolder = {};
+
+		// Default share folder to use for a network if no other folder is set.
+		this.defaultShareFolder = process.env["CLOUD7_SHARE_FOLDER"];
 
 		// Shared/Public files
-		// { file: <filename>, folder: <path to folder> }
-		this.publicFiles = this._getPublicFiles();
-
-		console.log("I share", this.publicFiles.length, "files in", this.shareFolder);
-
-		// Setup a watcher which refreshes this.publicFiles whenever
-		// something in the share folder changes.
-		this._startPublicFileWatcher();
+		// { network: [
+		// 		{ file: <filename>, folder: <path to folder> }
+		// ] }
+		this.publicFiles = {};
 
 
 		// Memory of misc. requests like file list retrieval.
@@ -124,10 +124,6 @@ function getModule(Core) {
 		// Time to live of the file list of this peer.
 		// This is also the republishing interval.
 		this.fileListTTL = 60000;
-
-		// Table of active servers for files
-		// { <file> : <server obj> }
-		this.activeServers = {};
 
 		// Everything should be set up. Start publishing.
 		// TODO fetch active networks (if any) and start publishing
@@ -175,6 +171,7 @@ function getModule(Core) {
 					break;
 
 				case "FileTransfer.listFiles":
+					// FileTransfer.listFiles(networkName)
 					self._answerListFilesRequest(senderId, jsonRpcRequest);
 					break;
 			}
@@ -223,19 +220,37 @@ function getModule(Core) {
 
 
 		_networkJoined: function(networkName) {
-			this.module.obj._startPublishingFileList(networkName);
+			var self = this.module.obj;
+
+			self.shareFolder[networkName] = self.defaultShareFolder;
+			self.publicFiles[networkName] = self._getPublicFiles(networkName);
+
+			console.log("I share", self.publicFiles[networkName].length, "files in network", networkName);
+
+			self._startPublishingFileList(networkName);
 		},
 
 
 		_networkLeft: function(networkName) {
-			this.module.obj._stopPublishingFileList(networkName);
+			var self = this.module.obj;
+
+			delete self.shareFolder[networkName];
+			delete self.publicFiles[networkName];
+
+			self._stopPublishingFileList(networkName);
 		},
 
 
+		// return undefined if file is not found
 		_getPublicFile: function(networkName, fileName) {
-			// TODO make depending on networks
-			console.log("_getPublicFile(",networkName,",",fileName,"):", this.publicFiles);
-			return this.publicFiles.filter(function(e) { if(e.file == fileName) return e; });
+			console.log("_getPublicFile(",networkName,",",fileName,"):", this.publicFiles[networkName]);
+
+			var matching = this.publicFiles[networkName].filter(function(e) { if(e.file == fileName) return e; });
+
+			if(matching.length > 0) {
+				return matching[0];
+			}
+			return undefined;
 		},
 
 
@@ -261,9 +276,9 @@ function getModule(Core) {
 				return;
 			}
 
-			console.log("ATTEMPT TO SERVE FILE", file);
-
 			var filePath = path.join(file.folder,file.file);
+
+			console.log("ATTEMPT TO SERVE FILE", file, "path:", filePath);
 
 			this._startFileServer(filePath, function(ip, port, file) {
 				if(ip == null || port == null) {
@@ -289,9 +304,24 @@ function getModule(Core) {
 		// File list answers can be split up to many lists. The receiver must be
 		// prepared to receive a bunch of lists under the same request id.
 		//
-		// TODO there are many empty lists transmitted. Investigate!
 		_answerListFilesRequest: function(senderId, request) {
-			var lists = splitInLists(this.publicFiles.map(function(e) { return e.file; }), 100);
+			var network = request.params[0];
+
+			if(network === undefined) {
+				var response = Core.createJsonRpcError(request.id, "Network required", Core.json_errors.invalid_params);
+				Core.callRpcMethodLocal("Peers.sendMessage", [senderId,response]);
+
+				return;
+			}
+
+			if(!this.publicFiles[network]) {
+				var response = Core.createJsonRpcError(request.id, "Network not joined", Core.json_errors.internal_error);
+				Core.callRpcMethodLocal("Peers.sendMessage", [senderId,response]);
+
+				return;
+			}
+
+			var lists = splitInLists(this.publicFiles[network].map(function(e) { return e.file; }), 100);
 
 			console.log("LISTSLENGHT",lists.length)
 
@@ -311,18 +341,17 @@ function getModule(Core) {
 
 		// Watch share folder for changes and refresh the public
 		// files struct then.
-		_startPublicFileWatcher: function() {
+		_startPublicFileWatcher: function(networkName) {
 			var self = this;
 
-			if(!this.shareFolder) {
+			if(!this.shareFolder[networkName]) {
 				console.log("Not watching files because no shareFolder is set.");
 				return;
 			}
 
-			return fs.watchFile(this.shareFolder, function(curr,prev) {
+			return fs.watchFile(this.shareFolder[networkName], function(curr,prev) {
 				console.log("Refreshing public files...");
-				// TODO different networks should have different public files
-				self.publicFiles = self._getPublicFiles();
+				self.publicFiles[networkName] = self._getPublicFiles(networkName);
 			});
 		},
 
@@ -335,33 +364,61 @@ function getModule(Core) {
 		// address data. If creation fails, ip and port is null.
 		//
 		_startFileServer: function(fileLocation, addressCallback) {
-			if(this.activeServers[fileLocation]) {
-				return;
-			}
+			console.log("Starting file server for", fileLocation);
+
+			var self = this;
+
+			// TODO limit max open servers, e.g. by sharing server instances
 
 			// TODO limit max open connections
+
 			var server = net.createServer({}, function(socket) {
 				console.log("In serve file for",fileLocation);
+
+				var server = this;
+
+				socket.on('error', function(error) {
+					var error = Core.createError('FileTransfer.transmitSocketError', error, {fileLocation: fileLocation});
+
+					Core.callRpcMethodLocal('Core.fireEvent', ['Core.error', error]);
+				});
+
 				fs.readFile(fileLocation, function (err, data) {
 					if (err) {
 						console.log("Error while reading file to send", fileLocation, err);
+
+						var error = Core.createError('FileTransfer.readFileError', err, {fileLocation: fileLocation});
+
+						Core.callRpcMethodLocal('Core.fireEvent', ['Core.error', error]);
 					} else {
 						console.log("Starting to transmit file",fileLocation);
-						socket.write(data);
-						socket.end();
-						console.log("Transmitted file",fileLocation);
+
+						try {
+							socket.write(data);
+
+							socket.end();
+
+							console.log("Transmitted file",fileLocation);
+						} catch(e) {
+							console.log("error in transmitting file",fileLocation,":",e);
+
+							var error = Core.createError('FileTransfer.transmitFile', e, {fileLocation: fileLocation});
+
+							Core.callRpcMethodLocal('Core.fireEvent', ['Core.error', error]);
+						}
+
+						// Close server
+						server.close();
 					}
 				});
 			});
 
-			var self = this;
-
 			// listen on random port
 			server.listen(function() {
 				var address = server.address();
+
 				console.log("opened file server on", address);
 
-				self.activeServers[fileLocation] = server;
 				addressCallback(address.address, address.port, fileLocation);
 			});
 		},
@@ -373,15 +430,13 @@ function getModule(Core) {
 		// The structure of the object is as follows:
 		// { file: <filename>, folder: <path to folder> }
 		//
-		// TODO:  different networks should have different files,
-		// TODO:: maybe with share folders configureable per network
-		_getPublicFiles: function() {
+		_getPublicFiles: function(networkName) {
 
 			function readPublicPaths(folder) {
 				var publicFiles = [];
 
 				if(!folder) {
-					console.log("Not reading files because no shareFolder is set.");
+					console.log("Not reading files because no share folder is set.");
 					return [];
 				}
 
@@ -414,7 +469,7 @@ function getModule(Core) {
 				return publicFiles;
 			}
 
-			return readPublicPaths(this.shareFolder);
+			return readPublicPaths(this.shareFolder[networkName]);
 		},
 
 
@@ -448,6 +503,8 @@ function getModule(Core) {
 			console.log("_startPublishingFileList:", networkName)
 
 			function fileListRefresher() {
+				// TODO:  supply file content hash for every file to distinguish
+				// TODO:: files with same name but different content
 				console.log("Refreshing file list in DHT.");
 
 				Core.callRpcMethodLocal("Peers.getMyId", [], function(response) {
@@ -456,11 +513,11 @@ function getModule(Core) {
 					console.log("Got peerId", peerId, networkName);
 
 					function add(i) {
-						if(i >= self.publicFiles.length) {
+						if(i >= self.publicFiles[networkName].length) {
 							return;
 						}
 
-						var fileObj = self.publicFiles[i];
+						var fileObj = self.publicFiles[networkName][i];
 						var fileHash = networkFileHash(networkName, self._fileNameHash(fileObj.file));
 
 						//console.log("adding",fileHash,"(",fileObj.file,")to DHT")
@@ -538,6 +595,7 @@ function getModule(Core) {
 		// Handles the answer of uploading peer
 		// TODO use checksum to validate downloaded file
 		_downloadResponseHandler: function(id, ip, port, size, checksum) {
+			var self = this;
 			var downloadData = this.ownDownloadRequests[id];
 
 			downloadData.size = size;
@@ -553,13 +611,13 @@ function getModule(Core) {
 
 			con.on('data', function(data) {
 				stream.write(data);
-				received += data.length;
+				downloadData.received += data.length;
 			});
 
 			con.on('end', function() {
 				stream.end();
-				stream.destroy();
-				console.log('finished downloading file to',path,'from',ip,port);
+				//stream.destroy();
+				console.log('finished downloading file to',path,'from',ip,port,"download info:",downloadData);
 				self._deleteOwnDownloadRequest(id);
 			});
 
@@ -676,6 +734,41 @@ function getModule(Core) {
 		},
 
 
+		setShareFolder: function(networkName, folder) {
+			var self = this.module.obj;
+			var requestId = this.requestId;
+			var response = null;
+
+			if(!self.shareFolder[networkName]) {
+				response = Core.createJsonRpcError(requestId, "Network not joined", Core.json_errors.internal_error);
+			} else {
+				self.shareFolder[networkName] = folder;
+				self.publicFiles[networkName] = self._getPublicFiles(networkName);
+
+				// TODO catch errors if folder is not readable.
+
+				response = Core.createJsonRpcResponse(requestId, true);
+			}
+
+			answerRequest(this.socket, response);
+		},
+
+
+		getShareFolder: function(networkName) {
+			var self = this.module.obj;
+			var requestId = this.requestId;
+			var response = null;
+
+			if(!self.shareFolder[networkName]) {
+				response = Core.createJsonRpcError(requestId, "Network not joined", Core.json_errors.internal_error);
+			} else {
+				response = Core.createJsonRpcResponse(requestId, self.shareFolder[networkName]);
+			}
+
+			answerRequest(this.socket, response);
+		},
+
+
 		// List files from peers in the network
 		//
 		// Returns ip/port of a socket on which the search results (JSON lists)
@@ -702,7 +795,7 @@ function getModule(Core) {
 					for(var i=0; i < peerList.length; i++) {
 						var peerId = peerList[i];
 						var requestId = Core.generateRequestId();
-						var fileQuery = Core.createJsonRpcRequest('FileTransfer.listFiles', [], requestId);
+						var fileQuery = Core.createJsonRpcRequest('FileTransfer.listFiles', [networkName], requestId);
 
 						// FIXME should probably not access node directly
 						if(peerId == self.peersModule.obj.node.id) {
