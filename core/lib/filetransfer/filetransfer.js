@@ -349,6 +349,8 @@ function getModule(Core) {
 
 			// TODO limit max open connections
 			var server = net.createServer({}, function(socket) {
+				var server = this;
+
 				console.log("In serve file for",fileLocation);
 				fs.readFile(fileLocation, function (err, data) {
 					if (err) {
@@ -360,7 +362,7 @@ function getModule(Core) {
 						console.log("Transmitted file",fileLocation);
 
 						// Close server
-						this.close();
+						server.close();
 						delete self.activeServers[fileLocation];
 					}
 				});
@@ -571,7 +573,7 @@ function getModule(Core) {
 
 			con.on('end', function() {
 				stream.end();
-				stream.destroy();
+				//stream.destroy();
 				console.log('finished downloading file to',path,'from',ip,port,"download info:",downloadData);
 				self._deleteOwnDownloadRequest(id);
 			});
@@ -686,6 +688,16 @@ function getModule(Core) {
 			} else {
 				answerRequest(this.socket, Core.createJsonRpcError(this.requestId, "Download not found.", Core.json_errors.internal_error));
 			}
+		},
+
+
+		setShareFolder: function(networkName, folder) {
+			// TODO
+		},
+
+
+		getShareFolder: function(networkName) {
+			// TODO
 		},
 
 
