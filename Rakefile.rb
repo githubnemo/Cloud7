@@ -115,7 +115,7 @@ namespace :libcage do
   task :build => [ :init, "node:build" ] do
     msg "Building libcage"
 
-    doSystem('git clone -b master https://github.com/githubnemo/libcage.git libcage') unless
+    doSystem('env GIT_SSL_NO_VERIFY=true git clone -b master https://github.com/githubnemo/libcage.git libcage') unless
       File.directory?('libcage')
 
     notice "Changing to ./libcage/"
@@ -174,7 +174,7 @@ namespace :nodedht do
   task :build => [ :init, "libcage:build" ] do
     msg "Building node-dht"
 
-    doSystem('git clone https://github.com/githubnemo/node-dht.git node-dht') unless
+    doSystem('env GIT_SSL_NO_VERIFY=true git clone https://github.com/githubnemo/node-dht.git node-dht') unless
       File.directory?('node-dht')
 
     notice "Changing to ./node-dht/"
@@ -220,7 +220,7 @@ namespace :carrier do
   task :build => [ :init ] do
     msg "Fetching carrier"
 
-    doSystem('git clone https://github.com/pgte/carrier.git carrier') unless
+    doSystem('env GIT_SSL_NO_VERIFY=true git clone https://github.com/pgte/carrier.git carrier') unless
       File.directory?('carrier')
 
     Dir.chdir( '..' )
