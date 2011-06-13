@@ -187,9 +187,7 @@ function getModule(Core) {
 
 
 				if(jsonRpcResponse.result) {
-					var data = null;
-
-						data = jsonRpcResponse.result;
+					var data = jsonRpcResponse.result;
 
 					if(data.ip == undefined || data.port == undefined ||
 					   data.size == undefined || data.checksum == undefined) {
@@ -197,7 +195,7 @@ function getModule(Core) {
 						console.log("FileTransfer: Missing data fields (", data, ")");
 						self._deleteOwnDownloadRequest(jsonRpcResponse.id);
 					} else {
-
+						data.ip = self.peersModule.obj.node.getPeerAddress(senderId);
 						downloadData.callback.apply(self, [jsonRpcResponse.id, data.ip, data.port, data.size, data.checksum])
 					}
 
