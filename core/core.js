@@ -772,6 +772,15 @@ var core = new Core(function() {
 	this.registerLocalModule("Peers", peers.getModule(this));
 	this.registerLocalModule("FileTransfer", filetransfer.getModule(this));
 
+	if(process.env['CLOUD7_CORE_TEST'] != undefined) {
+		var test = require('./lib/test/test.js');
+		var TestModule = test.getModule(this);
+
+		TestModule.invokeTests();
+
+		process.exit();
+	}
+
 	this.getModule("Core").obj.fireEvent("Core.initDone", []);
 
 	// TODO better solution for port configuration
