@@ -145,6 +145,20 @@ function Core(init) {
 
 Core.prototype = {
 
+	// createError(id, message[, map]) => Array
+	//
+	// Returns an array which fits the signature of the
+	// Core.error event.
+	createError: function(id, message) {
+		var error = [id, {message: message}];
+		if(arguments[2] != undefined) {
+			for(var prop in arguments[2]) {
+				error[1][prop] = arguments[2][prop];
+			}
+		}
+		return error;
+	},
+
 	// {method:"Core.registerModule", params:[{"name":"Test", "methods":["testString","testInt"]}], id:133}
 
 	registerLocalModule: function(name, obj) {
