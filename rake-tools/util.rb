@@ -1,7 +1,7 @@
 module Util
 
   def getNodeDir()
-    Dir.glob("#{$temp_dir}/node-*/").last
+    Dir.glob("#{$temp_dir}/node-v*/").last
   end
 
   def isValidArchive(path)
