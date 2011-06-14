@@ -4,6 +4,8 @@
 
 package cloud7.main;
 
+import javax.swing.JOptionPane;
+
 import cloud7.binding.*;
 
 import org.jdesktop.application.Application;
@@ -42,7 +44,13 @@ public class App extends SingleFrameApplication {
      * Main method launching the application.
      */
     public static void main(String[] args) {
-    	Foo.doStuff();
-        launch(App.class, args);
+    	// Foo.doStuff();
+    	// Initialize RPC Manager by trying to send a test message to the core.
+    	// If the following line is marked as an error, this is a bug in your IDE!
+    	rpc.Manager.initializeConnetionAndShowApp(args);
+    }
+    
+    public static void doLaunch(String[] args) {
+    	launch(App.class, args);
     }
 }
