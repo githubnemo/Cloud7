@@ -4,6 +4,10 @@ module Util
     Dir.glob("#{$temp_dir}/node-v*/").last
   end
 
+  def isCygwin?
+    not (%x[uname] =~ /CYGWIN/i).nil?
+  end
+
   def isValidArchive(path)
     `tar -tvzf #{path} 2>&1 >/dev/null`
     valid = $?.success?

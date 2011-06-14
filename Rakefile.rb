@@ -62,7 +62,12 @@ namespace :node do
                     # project is not configured.
 
       msg "Building node.js and libev"
-      doSystem('CXXFLAGS="-fPIC" CFLAGS="-fPIC" python tools/waf-light configure build')
+      if isCygwin?
+        doSystem('./configure --openssl-libpath=/usr/lib')
+      else
+        doSystem('./configure')
+      end
+      doSystem('CXXFLAGS="-fPIC" CFLAGS="-fPIC" python tools/waf-light build')
     end
 
     $node_dir = node_dir
@@ -181,7 +186,13 @@ namespace :nodedht do
     Dir.chdir( './node-dht/' )
 
     node_dir = getNodeDir()
-    doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure build -v")
+    if isCygwin?
+      doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure --openssl-libpath=/usr/lib")
+    else
+      doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure")
+    end
+
+    doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf build -v")
 
     Dir.chdir( '..' )
   end
