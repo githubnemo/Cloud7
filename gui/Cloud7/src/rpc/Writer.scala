@@ -12,7 +12,7 @@ case class Writer(clientSocket:Socket) extends Actor {
     
     loop {
       react {
-        case Send(x) => out.writeBytes(x + "\n")
+        case Send(x) => println("Sending message: " + x); out.writeBytes(x + "\n")
         case x => println("Unknown message received by Writer:" + x)
       }
     }

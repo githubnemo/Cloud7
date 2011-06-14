@@ -7,10 +7,17 @@ import com.thetransactioncompany.jsonrpc2._;
 
 import rpc._
 
+/**
+ * Implements the Peer API found at
+ * https://github.com/x3ro/Cloud7/wiki/Schnittstellen
+ */
+
 object Peers {
 
+  /**
+   * listNetworks() => List[String]
+   */
   def listNetworks(table:JTable) {
-    
     // Callback which extracts found networks from response and
     // updates the networks list JTable with them
     val callback = (r:JSONRPC2Response) => {
@@ -36,7 +43,53 @@ object Peers {
     //Manager ! Request("Peers.listNetworks", "foo" :: 1000 :: Nil, callback)
     
     // Send a listNetworks request which does not take arguments
-    Manager ! Request("Peers.listNetworks", Nil, callback)
+    val f = new Request("Peers.listNetworks", Nil, callback) with Timeout
+    f.setTimeout(5000)
+    f.setTimeoutCallback( () => {
+      println("timed out")
+    } )
+    
+    Manager !  f
   }
+  
+  
+  
+  /**
+   * joinNetwork(String: networkName) => True or Error
+   * TODO: Add additional parameter which we interact with
+   * in the callback.
+   */
+  def joinNetwork(name:String) {
+    
+    val callback = (r:JSONRPC2Response) => {
+      
+    }
+    
+    Manager ! Request("Peers.joinNetwork", name :: Nil, callback);
+  }
+  
+  
+  /**
+   * leaveNetwork(String: networkName)
+   */
+  def leaveNetwork(name:String) {
+    val callback = (r:JSONRPC2Response) => {
+      
+    }
+    
+    Manager ! Request("Peers.joinNetwork", name :: Nil, callback);
+  }
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
+  
   
 }
