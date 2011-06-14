@@ -840,7 +840,7 @@ var core = new Core(function() {
 
 		});
 
-	}).listen(corePort);
+	}).listen(corePort, '127.0.0.1');
 
 })
 

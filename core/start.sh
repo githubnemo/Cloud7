@@ -7,10 +7,14 @@ no_nodejs() {
 
 NODE_ROOT="$(pwd)/$(dirname $0)/../node/"
 
-DYLD_LIBRARY_PATH=$LD_LIBRARY_PATH:"$(pwd)/$(dirname $0)/lib/peers/libcage/src"
+LIBRARY_PATH="$(pwd)/$(dirname $0)/lib/peers/libcage/src":"$(pwd)/$(dirname $0)/lib/peers/libev/.libs":
+
+echo $LIBRARY_PATH
+
+DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:$LIBRARY_PATH
 export DYLD_LIBRARY_PATH
 
-LD_LIBRARY_PATH=$LD_LIBRARY_PATH:"$(pwd)/$(dirname $0)/lib/peers/libcage/src"
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$LIBRARY_PATH
 export LD_LIBRARY_PATH
 
 if [ -e "start_config" ]; then
