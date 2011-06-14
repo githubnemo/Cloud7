@@ -50,8 +50,13 @@ namespace :libev do
 
 	# TODO not configuring if already configured.
 
-	# TODO maybe make -lrt depending on whether librt exists or not...
-	flags = 'CFLAGS="-DHAVE_LIBRT -DEV_FORK_ENABLE=0 -DEV_EMBED_ENABLE=0 -DEV_MULTIPLICITY=0" LDFLAGS="-lrt"'
+	additional_ldflags = ""
+
+	if not isDarwin?
+      additional_ldflags += "-lrt"
+	end
+
+	flags = 'CFLAGS="-DHAVE_LIBRT -DEV_FORK_ENABLE=0 -DEV_EMBED_ENABLE=0 -DEV_MULTIPLICITY=0" LDFLAGS="'+additional_ldflags+'"'
 
     doSystem("#{flags} ./configure")
 	doSystem("#{flags} make")
