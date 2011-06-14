@@ -4,6 +4,10 @@ module Util
     Dir.glob("#{$temp_dir}/node-v*/").last
   end
 
+  def getLibEvDir()
+    Dir.glob("#{$root_dir}/core/lib/peers/libev").last
+  end
+
   def isCygwin?
     not (%x[uname] =~ /CYGWIN/i).nil?
   end

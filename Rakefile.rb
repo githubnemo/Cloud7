@@ -29,6 +29,68 @@ end
 
 
 ####
+# libev related
+####
+
+namespace :libev do
+
+  task :build => [ :init ] do
+    msg "Building libev"
+
+	ev_version = "4.04" # version string of needed version
+
+	if not File.directory?('libev')
+		doSystem("wget http://dist.schmorp.de/libev/libev-#{ev_version}.tar.gz")
+		doSystem("tar -xvzf libev-#{ev_version}.tar.gz")
+		doSystem("mv libev-#{ev_version} libev")
+	end
+
+    notice "Changing to ./libev/"
+    Dir.chdir( './libev/' )
+
+    doSystem("./configure")
+	doSystem("make")
+
+    Dir.chdir('../')
+  end
+
+
+  task :clean do
+    libev_dir = "#{$temp_dir}/libev"
+    if Dir.exists?(libev_dir)
+      Dir.chdir(libev_dir)
+      doSystem("make clean")
+    else
+      notice "libev directory does not exist yet (#{libev_dir})"
+    end
+
+    msg("Successfully cleaned the libev target")
+  end
+
+
+  task :install => [:init, "libev:build"] do
+    cloud7_peers = "#{$root_dir}/core/lib/peers/"
+
+    notice "Removing old libev installation from Cloud7 directory"
+    FileUtils.rm_rf "#{cloud7_peers}/libev" or
+      error("Could not delete '#{cloud7_peers}/libev'")
+
+
+    libev_dir = "#{$temp_dir}/libev"
+
+    begin
+      FileUtils.cp_r(libev_dir, cloud7_peers)
+    rescue Exception => e
+      error("Could not copy '#{libev_dir}' to '#{cloud7_peers}'")
+    end
+
+    msg("Successfully installed libev into #{cloud7_peers}")
+  end
+
+
+end # Namespace :libev
+
+####
 # Node related
 ####
 
@@ -62,12 +124,17 @@ namespace :node do
                     # project is not configured.
 
       msg "Building node.js and libev"
+	  additionals = "" # additional configuration parameters
+
       if isCygwin?
-        doSystem('./configure --openssl-libpath=/usr/lib')
-      else
-        doSystem('./configure')
+        additionals = "--openssl-libpath=/usr/lib"
       end
-      doSystem('CXXFLAGS="-fPIC" CFLAGS="-fPIC" python tools/waf-light build')
+
+      libev_dir = getLibEvDir
+
+      doSystem("./configure --shared-libev --shared-libev-includes=#{libev_dir} --shared-libev-libpath=#{libev_dir}/.libs #{additionals}")
+
+      doSystem('python tools/waf-light build')
     end
 
     $node_dir = node_dir
@@ -129,10 +196,10 @@ namespace :libcage do
     requirement('omake', :binary)
     requirement('boost_random-mt', :library)
 
-    applyPatch("./OMakefile", "#{$root_dir}/rake-tools/patches/libcage_omakefile.patch")
-
     node_dir = getNodeDir()
-    doSystem("omake CXXFLAGS='-I#{node_dir}/deps/libev/ -fPIC' LDFLAGS='#{node_dir}/build/default/deps/libev/ev_1.o #{node_dir}/build/default/deps/libev/event_1.o' EV=TRUE")
+	libev_dir = getLibEvDir()
+
+    doSystem("omake CXXFLAGS='-I#{libev_dir}/' LDFLAGS='-L#{libev_dir}/.libs/' EV=TRUE")
 
     Dir.chdir('../')
   end
@@ -186,13 +253,15 @@ namespace :nodedht do
     Dir.chdir( './node-dht/' )
 
     node_dir = getNodeDir()
+	libev_dir = getLibEvDir()
+
     if isCygwin?
-      doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure --openssl-libpath=/usr/lib")
+      doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{libev_dir} -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure --openssl-libpath=/usr/lib")
     else
-      doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure")
+      doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{libev_dir} -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure")
     end
 
-    doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{node_dir}deps/libev -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf build -v")
+    doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{libev_dir} -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf build -v")
 
     Dir.chdir( '..' )
   end
@@ -278,15 +347,15 @@ end # Namespace: :carrier
 
 
 
-task :all => [ :init, "node:build", "libcage:build", "nodedht:build", "carrier:build" ] do
+task :all => [ :init, "libev:build", "node:build", "libcage:build", "nodedht:build", "carrier:build" ] do
   msg "All stuff built"
 end
 
-task :clean => [ "node:clean", "libcage:clean", "nodedht:clean", "carrier:clean" ] do
+task :clean => [ "libev:build", "node:clean", "libcage:clean", "nodedht:clean", "carrier:clean" ] do
   msg "Cleaned all targets"
 end
 
-task :install => [ :init, "node:install", "libcage:install", "nodedht:install", "carrier:install"] do
+task :install => [ :init, "libev:install", "node:install", "libcage:install", "nodedht:install", "carrier:install"] do
   msg "All installed"
 end
 
