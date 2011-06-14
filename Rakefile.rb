@@ -48,8 +48,13 @@ namespace :libev do
     notice "Changing to ./libev/"
     Dir.chdir( './libev/' )
 
-    doSystem("./configure")
-	doSystem("make")
+	# TODO not configuring if already configured.
+
+	# TODO maybe make -lrt depending on whether librt exists or not...
+	flags = 'CFLAGS="-DHAVE_LIBRT -DEV_FORK_ENABLE=0 -DEV_EMBED_ENABLE=0 -DEV_MULTIPLICITY=0" LDFLAGS="-lrt"'
+
+    doSystem("#{flags} ./configure")
+	doSystem("#{flags} make")
 
     Dir.chdir('../')
   end
@@ -57,7 +62,7 @@ namespace :libev do
 
   task :clean do
     libev_dir = "#{$temp_dir}/libev"
-    if Dir.exists?(libev_dir)
+    if File.exists?(libev_dir)
       Dir.chdir(libev_dir)
       doSystem("make clean")
     else
@@ -146,7 +151,7 @@ namespace :node do
   task :clean do
     node_dir = getNodeDir()
 
-    if Dir.exists?(node_dir)
+    if File.exists?(node_dir)
       Dir.chdir(node_dir)
       doSystem("make clean")
     else
