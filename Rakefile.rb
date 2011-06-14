@@ -62,7 +62,12 @@ namespace :node do
                     # project is not configured.
 
       msg "Building node.js and libev"
-      doSystem('CXXFLAGS="-fPIC" CFLAGS="-fPIC" python tools/waf-light configure build')
+      if isCygwin?
+        doSystem('./configure --openssl-libpath=/usr/lib')
+      else
+        doSystem('./configure')
+      end
+      doSystem('CXXFLAGS="-fPIC" CFLAGS="-fPIC" python tools/waf-light build')
     end
 
     $node_dir = node_dir
