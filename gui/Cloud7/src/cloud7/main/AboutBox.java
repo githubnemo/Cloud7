@@ -12,6 +12,7 @@ public class AboutBox extends javax.swing.JDialog {
         super(parent);
         initComponents();
         getRootPane().setDefaultButton(closeButton);
+        this.setAlwaysOnTop(true);
     }
 
     @Action public void closeAboutBox() {
@@ -100,7 +101,7 @@ public class AboutBox extends javax.swing.JDialog {
                             .addComponent(appVendorLabel)
                             .addComponent(appHomepageLabel)))
                     .addComponent(appTitleLabel, javax.swing.GroupLayout.Alignment.LEADING)
-                    .addComponent(appDescLabel, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, javax.swing.GroupLayout.DEFAULT_SIZE, Short.MAX_VALUE)
+                    .addComponent(appDescLabel, javax.swing.GroupLayout.Alignment.LEADING, javax.swing.GroupLayout.DEFAULT_SIZE, 376, Short.MAX_VALUE)
                     .addComponent(closeButton))
                 .addContainerGap())
         );
@@ -123,7 +124,7 @@ public class AboutBox extends javax.swing.JDialog {
                 .addGroup(layout.createParallelGroup(javax.swing.GroupLayout.Alignment.BASELINE)
                     .addComponent(homepageLabel)
                     .addComponent(appHomepageLabel))
-                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 33, Short.MAX_VALUE)
+                .addPreferredGap(javax.swing.LayoutStyle.ComponentPlacement.RELATED, 47, Short.MAX_VALUE)
                 .addComponent(closeButton)
                 .addContainerGap())
             .addComponent(jLabel1, javax.swing.GroupLayout.DEFAULT_SIZE, 177, Short.MAX_VALUE)
