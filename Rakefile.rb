@@ -48,8 +48,6 @@ namespace :libev do
     notice "Changing to ./libev/"
     Dir.chdir( './libev/' )
 
-	# TODO not configuring if already configured.
-
 	additional_ldflags = ""
 
 	if not isDarwin?
@@ -58,8 +56,10 @@ namespace :libev do
 
 	flags = 'CFLAGS="-DHAVE_LIBRT -DEV_FORK_ENABLE=0 -DEV_EMBED_ENABLE=0 -DEV_MULTIPLICITY=0" LDFLAGS="'+additional_ldflags+'"'
 
-    doSystem("#{flags} ./configure")
-	doSystem("#{flags} make")
+	if not File.exists?('./configured')
+		doSystem("#{flags} ./configure && :> ./configured")
+		doSystem("#{flags} make")
+	end
 
     Dir.chdir('../')
   end
@@ -70,6 +70,7 @@ namespace :libev do
     if File.exists?(libev_dir)
       Dir.chdir(libev_dir)
       doSystem("make clean")
+      doSystem('rm ./configured') if File.exists?('./configured)')
     else
       notice "libev directory does not exist yet (#{libev_dir})"
     end
@@ -265,13 +266,25 @@ namespace :nodedht do
     node_dir = getNodeDir()
 	libev_dir = getLibEvDir()
 
+	environment = "export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ;"
+
+
+	additional_cflags = ""
+	additional_linkflags = ""
+
     if isCygwin?
-      doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{libev_dir} -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure --openssl-libpath=/usr/lib")
-    else
-      doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{libev_dir} -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf configure")
+		additional_linkflags += "-L#{libev_dir}/.libs"
+		applyPatch('./wscript', '#{$root_dir}/rake-tools/patches/node-dht_wscript_cygwin.patch');
     end
 
-    doSystem("export PYTHONPATH=#{node_dir}/tools/wafadmin/:#{node_dir}/tools/wafadmin/Tools ; export PREFIX_NODE=#{node_dir} ; CXXFLAGS='-I#{libev_dir} -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/' LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/' #{node_dir}/tools/node-waf build -v")
+	cflags = "CXXFLAGS='-I#{libev_dir} -I#{node_dir}/src/ -I#{node_dir}/deps/libeio/ -I#{node_dir}deps/v8/include/ -I#{$root_dir}/_temp/libcage/include/ #{additional_cflags}' "
+
+	linkflags = "LINKFLAGS='-L#{node_dir}/build/default/ -L#{$root_dir}/_temp/libcage/src/ #{additional_linkflags}' "
+
+
+    doSystem("#{environment} #{cflags} #{linkflags} #{node_dir}/tools/node-waf configure")
+    doSystem("#{environment} #{cflags} #{linkflags} #{node_dir}/tools/node-waf build -v")
+
 
     Dir.chdir( '..' )
   end
