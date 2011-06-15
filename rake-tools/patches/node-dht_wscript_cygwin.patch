@@ -1,0 +1,11 @@
+--- wscript.org	2011-06-15 13:49:32.781053700 -0700
++++ wscript	2011-06-15 13:49:52.539464900 -0700
+@@ -19,7 +19,7 @@ def build(bld):
+   obj.source = "dht.cc"
+   obj.cxxflags = ["-D_FILE_OFFSET_BITS=64", "-D_LARGEFILE_SOURCE",
+     "-DEV_MULTIPLICITY=0"]
+-  obj.lib = "cage"
++  obj.lib = ["cage","ev","ssl","crypto"]
+ 
+ def shutdown():
+   if Options.commands['clean']:
