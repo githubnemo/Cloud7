@@ -9,11 +9,6 @@ var querystring = require('querystring');
  * - node.put() can only take buffers with a 16 bit length
  *   because libcage uses uint16_t as length.
  *
- * - it seems that libcage/nodejs is VERY time-sensitive.
- *   if a join takes too much time the join fails due to
- *   MISSED packets. This must be fixed _SOON_.
- *   See node-dht/examples/sample3_alt.js and add something
- *   which suspens execution for some time.
  */
 
 /**
@@ -23,11 +18,6 @@ var querystring = require('querystring');
  *   so the node can resume it's administrative tasks if it's
  *   restarted. (administrative tasks as in peer list refreshing)
  *
- * - modify generateRequestId() so once can specify the place to
- *   lookup for already assigned IDs.
- *
- * - NETWORK JOINED/LEFT EVENT
- *
  * - Events in general
  *
  */
@@ -35,9 +25,6 @@ var querystring = require('querystring');
 /**
  * global FIXMEs:
  *
- * - calling joinNetwork from the same client twice results in a weird
- *   list structure of DHT[networkPeersKey(network)].
- *   (Update: Verify, removed duplicate entries)
  */
 
 
@@ -64,14 +51,14 @@ function trackerNetworkRequest(networkName, responseCallback) {
 		method: 'GET',
 	};
 
-	route.getDefaultRoute(function(gatewayIP, error) {
+	route.getDefaultRoute(function(gatewayIP) {
 		var gatewayAppendix;
 
-		if(error != null) {
+		if(gatewayIP === null) {
 			console.log("trackerNetworkRequest: Error while retrieving gateway IP");
 			gatewayAppendix = "";
 		} else {
-			gatewayAppendix = "" // "/" + gatewayIP;  FIXME issue 01
+			gatewayAppendix = "" // "/" + gatewayIP;  FIXME issue 02
 		}
 
 		options.path += gatewayAppendix;
@@ -86,7 +73,6 @@ function trackerNetworkRequest(networkName, responseCallback) {
 						return responseCallback(null, e);
 					}
 
-					// XXX keep status? not specified!
 					if(peer.status !== undefined) {
 						responseCallback(null, peer.status);
 					} else {
@@ -118,7 +104,9 @@ function trackerNetworkList(responseCallback) {
 		method: 'GET',
 	};
 
-	function getNetworkList() {
+	function getNetworkList(gatewayIP) {
+		options.path += "/"+gatewayIP;
+
 		http.get(options, function(res) {
 			res.on('data', function(data) {
 				var list;
@@ -134,10 +122,17 @@ function trackerNetworkList(responseCallback) {
 
 	saveResolveHost(cloud7tracker, function(err,_) {
 		if(err) {
-			console.log("Error resolving cloud7 tracker host:",err);
+			console.log("trackerNetworkList: Error resolving cloud7 tracker host:",err);
 			responseCallback(null, err);
 		} else {
-			getNetworkList();
+			route.getDefaultRoute(function(gatewayIP) {
+				if(gatewayIP === null) {
+					console.log("trackerNetworkList: Error while retrieving gateway address.");
+					getNetworkList("");
+				} else {
+					getNetworkList(gatewayIP);
+				}
+			});
 		}
 	});
 }
