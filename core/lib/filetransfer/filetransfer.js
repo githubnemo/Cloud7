@@ -878,7 +878,7 @@ function getModule(Core) {
 
 					setTimeout(function() {
 						try {
-							listSocket.write("END\n");
+							listSocket.end("END\n");
 						} catch(e) {}
 
 						self._stopFileListingServer(server);
