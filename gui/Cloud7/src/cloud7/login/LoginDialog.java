@@ -230,8 +230,9 @@ public class LoginDialog extends javax.swing.JDialog {
     }//GEN-LAST:event_jButton4ActionPerformed
 
     private void jButton1ActionPerformed(java.awt.event.ActionEvent evt) {//GEN-FIRST:event_jButton1ActionPerformed
-        // do login shit
-        if(!f_network.getText().equals(""))  { this.dispose(); }
+        if(!f_network.getText().equals(""))  { 
+        	Peers.joinNetwork(f_network.getText(), this);
+        }
     }//GEN-LAST:event_jButton1ActionPerformed
 
     private void f_networkMouseClicked(java.awt.event.MouseEvent evt) {//GEN-FIRST:event_f_networkMouseClicked

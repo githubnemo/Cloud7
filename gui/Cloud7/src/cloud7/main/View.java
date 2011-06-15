@@ -27,6 +27,7 @@ public class View extends FrameView {
         this.getFrame().setLocationRelativeTo(loginDialog);
         this.getFrame().setAlwaysOnTop(true);
         this.getFrame().setTitle("Cloud 7");
+        this.getFrame().setBounds(0, 0, 800, 600);
 
         this.getFrame().addWindowListener(new java.awt.event.WindowAdapter() {
 
@@ -93,6 +94,11 @@ public class View extends FrameView {
                 }
             }
         });
+        
+        
+        
+        cloud7.binding.FileTransfer.listFiles(jTable1, busyIconTimer);
+        
     }
 
     @Action
@@ -331,7 +337,7 @@ public class View extends FrameView {
 
         jTable1.setModel(new javax.swing.table.DefaultTableModel(
             new Object [][] {
-                {null, null, null, null, null, null, null, null, null},
+                {"foo", null, null, null, null, null, null, null, null},
                 {null, null, null, null, null, null, null, null, null},
                 {null, null, null, null, null, null, null, null, null},
                 {null, null, null, null, null, null, null, null, null}
@@ -352,6 +358,9 @@ public class View extends FrameView {
         jTable1.getColumnModel().getColumn(7).setHeaderValue(resourceMap.getString("jTable1.columnModel.title7")); // NOI18N
         jTable1.getColumnModel().getColumn(8).setHeaderValue(resourceMap.getString("jTable1.columnModel.title8")); // NOI18N
 
+        
+      
+        
         javax.swing.GroupLayout jPanel3Layout = new javax.swing.GroupLayout(jPanel3);
         jPanel3.setLayout(jPanel3Layout);
         jPanel3Layout.setHorizontalGroup(

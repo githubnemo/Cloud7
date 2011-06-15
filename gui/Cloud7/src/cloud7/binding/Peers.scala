@@ -14,10 +14,14 @@ import rpc._
 
 object Peers {
 
+  var networkName:String = _
+  
   /**
    * listNetworks() => List[String]
    */
   def listNetworks(table:JTable) {
+    
+    println("listNetworks")
     // Callback which extracts found networks from response and
     // updates the networks list JTable with them
     val callback = (r:JSONRPC2Response) => {
@@ -43,29 +47,31 @@ object Peers {
     //Manager ! Request("Peers.listNetworks", "foo" :: 1000 :: Nil, callback)
     
     // Send a listNetworks request which does not take arguments
-    val f = new Request("Peers.listNetworks", Nil, callback) with Timeout
-    f.setTimeout(5000)
-    f.setTimeoutCallback( () => {
-      println("timed out")
-    } )
-    
-    Manager !  f
+    Manager ! Request("Peers.listNetworks", Nil, callback)
   }
   
   
   
   /**
    * joinNetwork(String: networkName) => True or Error
-   * TODO: Add additional parameter which we interact with
-   * in the callback.
    */
-  def joinNetwork(name:String) {
-    
+  def joinNetwork(name:String, loginDialog:javax.swing.JDialog) {
+    println("joinNetwork")
     val callback = (r:JSONRPC2Response) => {
-      
+      r.getResult() match {
+        case x:java.lang.Boolean if x == false => cloud7.main.ModalDialogs.joinFailed(loginDialog)
+        case x:java.lang.Boolean => networkName = name;loginDialog.dispose()
+        case _ => println("Unexpected result in joinNetwork response")
+      }
     }
     
-    Manager ! Request("Peers.joinNetwork", name :: Nil, callback);
+    val r = new Request("Peers.joinNetwork", name :: Nil, callback) with Timeout
+    r.setTimeout(10000)
+    r.setTimeoutCallback( () => {
+      cloud7.main.ModalDialogs.joinFailed(loginDialog)
+    } )
+    
+    Manager ! r
   }
   
   
