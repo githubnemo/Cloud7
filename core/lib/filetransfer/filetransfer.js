@@ -4,6 +4,9 @@ var path = require('path');
 var crypto = require('crypto');
 
 // Hash for a specific file in the network
+//
+// Takes fileHash because it's not clear which is the hash data
+// of a file.
 function networkFileHash(networkName, fileHash) {
 	var hasher = crypto.createHash('sha1');
 	hasher.update(networkName);
@@ -93,7 +96,7 @@ function getModule(Core) {
 
 		// Shared/Public files
 		// { network: [
-		// 		{ file: <filename>, folder: <path to folder> }
+		// 		{ file: <filename>, folder: <path to folder>, size: <size in bytes> }
 		// ] }
 		this.publicFiles = {};
 
@@ -113,7 +116,8 @@ function getModule(Core) {
 		//		callback: <function to be called if response is received>,
 		//		received: <bytes received so far>,
 		//		size: <bytes in total>,
-		//		checksum: <checksum of file>
+		//		checksum: <checksum of file>,
+		//		startTime: <time stamp of start time>
 		// } }
 		this.ownDownloadRequests = {};
 
@@ -288,7 +292,7 @@ function getModule(Core) {
 
 				console.log("IN SERVER HANDLER FOR FILE", file);
 
-				var fileSize = 4096; // TODO read file size
+				var fileSize = file.size;
 				var fileChecksum = "f8a9fcd0170d9ef0f03891f72f21568d6895e66a"; // TODO compute sha1 checksum
 
 				var downloadInfo = {ip: ip, port: port, size: fileSize, checksum: fileChecksum};
@@ -458,7 +462,7 @@ function getModule(Core) {
 					}
 
 					if(stat.isFile()) {
-						publicFiles.unshift({ file: files[i], folder: folder });
+						publicFiles.unshift({ file: files[i], folder: folder, size: stat.size });
 					} else {
 						publicFiles = publicFiles.concat( readPublicPaths(path) );
 					}
@@ -590,6 +594,11 @@ function getModule(Core) {
 		},
 
 
+		_fireDownloadStartedEvent: function(id) {
+			Core.callRpcMethodLocal("Core.fireEvent", ["FileTransfer.downloadStarted", id]);
+		},
+
+
 		// Handles the answer of uploading peer
 		// TODO use checksum to validate downloaded file
 		_downloadResponseHandler: function(id, ip, port, size, checksum) {
@@ -599,6 +608,7 @@ function getModule(Core) {
 			downloadData.size = size;
 			downloadData.received = 0;
 			downloadData.checksum = checksum;
+			downloadData.startTime = Date.now();
 
 			var path = downloadData.destinationPath;
 			var stream = fs.createWriteStream(path);
@@ -606,6 +616,8 @@ function getModule(Core) {
 			var con = net.createConnection(port, ip);
 
 			console.log('start downloading file to',path,'from',ip,port);
+
+			this._fireDownloadStartedEvent(id);
 
 			con.on('data', function(data) {
 				stream.write(data);
@@ -722,7 +734,8 @@ function getModule(Core) {
 					checksum: self.ownDownloadRequests[id].checksum,
 					name: self.ownDownloadRequests[id].fileName,
 					destination: self.ownDownloadRequests[id].destinationPath,
-					network: self.ownDownloadRequests[id].network
+					network: self.ownDownloadRequests[id].network,
+					startTime: self.ownDownloadRequests[id].startTime
 				};
 
 				answerRequest(this.socket, Core.createJsonRpcResponse(this.requestId, info));
