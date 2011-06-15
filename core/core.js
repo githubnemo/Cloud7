@@ -306,6 +306,25 @@ Core.prototype = {
 	 * JSON definitions / methods
 	 */
 
+	// Signature: addJsonError(name, number, description="") => True or Exception
+	//
+	// If an error with the given name exists or the error number is invalid,
+	// an exception is thrown.
+	//
+	// Description is not used internally but shall encourage developers to
+	// put in a description.
+	addJsonError: function(name, number, description) {
+		if(this.json_errors[name]) {
+			throw new Error("Error already registered.");
+		}
+		if(number > -32700 || number < -32603) {
+			this.json_errors[name] = number
+			return true;
+		} else {
+			throw new Error("Invalid error code.");
+		}
+	},
+
 	json_errors: {
 		parse_error: 		-32700, 	// Parse error 			Invalid JSON was received by the server.
 		invalid_request: 	-32600, 	// Invalid Request 		The JSON sent is not a valid Request object.

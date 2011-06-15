@@ -9,8 +9,6 @@ NODE_ROOT="$(pwd)/$(dirname $0)/../node/"
 
 LIBRARY_PATH="$(pwd)/$(dirname $0)/lib/peers/libcage/src":"$(pwd)/$(dirname $0)/lib/peers/libev/.libs":
 
-echo $LIBRARY_PATH
-
 DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:$LIBRARY_PATH
 export DYLD_LIBRARY_PATH
 

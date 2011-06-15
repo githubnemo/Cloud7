@@ -4,6 +4,9 @@ var path = require('path');
 var crypto = require('crypto');
 
 // Hash for a specific file in the network
+//
+// Takes fileHash because it's not clear which is the hash data
+// of a file.
 function networkFileHash(networkName, fileHash) {
 	var hasher = crypto.createHash('sha1');
 	hasher.update(networkName);
@@ -41,7 +44,8 @@ function splitInLists(list, limitPerList) {
 
 	for(var i=0; i < list.length; i++) {
 		if(list[i].length > limitPerList) {
-			throw "element " + i + " is bigger than limit per list"
+			console.log("splitInLists: Ignoring file", list[i]);
+			continue; // Element is too big for limit
 		}
 
 		if(currentCount+list[i].length == limitPerList) { // fits exactly (fills up the list)
@@ -74,7 +78,15 @@ function getModule(Core) {
 	}
 
 
+	function setupModuleErrors() {
+		Core.addJsonError("FileTransfer.fileServerStart", 	-2000, "File server start went wrong.");
+		Core.addJsonError("FileTransfer.noSuchFile", 		-2001, "File or directory supplied/used not found.");
+	}
+
+
 	function FileTransfer() {
+
+		setupModuleErrors();
 
 		this.peersModule = Core.getModule("Peers")
 
@@ -93,7 +105,7 @@ function getModule(Core) {
 
 		// Shared/Public files
 		// { network: [
-		// 		{ file: <filename>, folder: <path to folder> }
+		// 		{ file: <filename>, folder: <path to folder>, size: <size in bytes> }
 		// ] }
 		this.publicFiles = {};
 
@@ -113,7 +125,8 @@ function getModule(Core) {
 		//		callback: <function to be called if response is received>,
 		//		received: <bytes received so far>,
 		//		size: <bytes in total>,
-		//		checksum: <checksum of file>
+		//		checksum: <checksum of file>,
+		//		startTime: <time stamp of start time>
 		// } }
 		this.ownDownloadRequests = {};
 
@@ -124,10 +137,6 @@ function getModule(Core) {
 		// Time to live of the file list of this peer.
 		// This is also the republishing interval.
 		this.fileListTTL = 60000;
-
-		// Everything should be set up. Start publishing.
-		// TODO fetch active networks (if any) and start publishing
-		//this._startPublishingFileList();
 	}
 
 
@@ -223,6 +232,12 @@ function getModule(Core) {
 			self.shareFolder[networkName] = self.defaultShareFolder;
 			self.publicFiles[networkName] = self._getPublicFiles(networkName);
 
+			try {
+				fs.statSync(self.defaultShareFolder);
+			} catch(e) {
+				console.log("Default share folder (", self.defaultShareFolder, ") not found: ", e);
+			}
+
 			console.log("I share", self.publicFiles[networkName].length, "files in network", networkName);
 
 			self._startPublishingFileList(networkName);
@@ -282,13 +297,19 @@ function getModule(Core) {
 				if(ip == null || port == null) {
 					// Error occured
 					console.log("Error while starting file server");
-					// TODO handle error
+
+					var errorResponse = Core.createJsonRpcError(request.id,
+							"File server start failed.",
+							Core.json_errors["FileTransfer.fileServerStart"]);
+
+					Core.callRpcMethodLocal("sendMessage", [senderId, errorResponse]);
+
 					return;
 				}
 
 				console.log("IN SERVER HANDLER FOR FILE", file);
 
-				var fileSize = 4096; // TODO read file size
+				var fileSize = file.size;
 				var fileChecksum = "f8a9fcd0170d9ef0f03891f72f21568d6895e66a"; // TODO compute sha1 checksum
 
 				var downloadInfo = {ip: ip, port: port, size: fileSize, checksum: fileChecksum};
@@ -301,6 +322,8 @@ function getModule(Core) {
 
 		// File list answers can be split up to many lists. The receiver must be
 		// prepared to receive a bunch of lists under the same request id.
+		//
+		// TODO flood protection
 		//
 		_answerListFilesRequest: function(senderId, request) {
 			var network = request.params[0];
@@ -319,12 +342,17 @@ function getModule(Core) {
 				return;
 			}
 
-			var lists = splitInLists(this.publicFiles[network].map(function(e) { return e.file; }), 100);
+			function createSplitableFileObject(file, size) {
+				var obj = {file: file, size: size};
+				obj.length = file.length + String(size).length;
+				return obj;
+			}
 
-			console.log("LISTSLENGHT",lists.length)
+			var lists = splitInLists(this.publicFiles[network].map(function(e) { return createSplitableFileObject(e.file, e.size); }), 400);
 
 			for(var i=0; i < lists.length; i++) {
-				var response = Core.createJsonRpcResponse(request.id, lists[i]);
+
+				var response = Core.createJsonRpcResponse(request.id, lists[i].map(function(e) {delete e.length; return e;}));
 
 				console.log("_answerListFilesRequest response is", response.length,"chars.")
 
@@ -443,7 +471,6 @@ function getModule(Core) {
 				try {
 					files = fs.readdirSync(folder);
 				} catch(e) {
-					// TODO report error to user somehow?
 					console.log("_getPublicFiles: Error while reading", folder, ":", e);
 					return publicFiles;
 				}
@@ -458,7 +485,7 @@ function getModule(Core) {
 					}
 
 					if(stat.isFile()) {
-						publicFiles.unshift({ file: files[i], folder: folder });
+						publicFiles.unshift({ file: files[i], folder: folder, size: stat.size });
 					} else {
 						publicFiles = publicFiles.concat( readPublicPaths(path) );
 					}
@@ -494,44 +521,47 @@ function getModule(Core) {
 		},
 
 
+		_refreshFileList: function(networkName) {
+			var self = this;
+
+			console.log("Refreshing file list in DHT.");
+
+			Core.callRpcMethodLocal("Peers.getMyId", [], function(response) {
+				var peerId = response.result;
+
+				console.log("Got peerId", peerId, networkName);
+
+				function add(i) {
+					if(i >= self.publicFiles[networkName].length) {
+						return;
+					}
+
+					var fileObj = self.publicFiles[networkName][i];
+					var fileHash = networkFileHash(networkName, self._fileNameHash(fileObj.file));
+
+					//console.log("adding",fileHash,"(",fileObj.file,")to DHT")
+
+					Core.callRpcMethodLocal("Peers.DHTput", [fileHash, peerId, self.fileListTTL / 1000], function() {
+						setTimeout(add, 0, i+1);
+					});
+				}
+
+				add(0);
+			});
+		},
+
+
 		// Publish public file list in the DHT
 		_startPublishingFileList: function(networkName) {
 			var self = this;
 
 			console.log("_startPublishingFileList:", networkName)
 
-			function fileListRefresher() {
-				// TODO:  supply file content hash for every file to distinguish
-				// TODO:: files with same name but different content
-				console.log("Refreshing file list in DHT.");
+			self.publishingNetworks[networkName] = setInterval(function() {
+					self._refreshFileList(networkName);
+			}, self.fileListTTL);
 
-				Core.callRpcMethodLocal("Peers.getMyId", [], function(response) {
-					var peerId = response.result;
-
-					console.log("Got peerId", peerId, networkName);
-
-					function add(i) {
-						if(i >= self.publicFiles[networkName].length) {
-							return;
-						}
-
-						var fileObj = self.publicFiles[networkName][i];
-						var fileHash = networkFileHash(networkName, self._fileNameHash(fileObj.file));
-
-						//console.log("adding",fileHash,"(",fileObj.file,")to DHT")
-
-						Core.callRpcMethodLocal("Peers.DHTput", [fileHash, peerId, self.fileListTTL / 1000], function() {
-							setTimeout(add, 0, i+1);
-						});
-					}
-
-					add(0);
-				});
-			}
-
-			self.publishingNetworks[networkName] = setInterval(fileListRefresher, self.fileListTTL);
-
-			fileListRefresher();
+			self._refreshFileList(networkName);
 		},
 
 
@@ -590,6 +620,11 @@ function getModule(Core) {
 		},
 
 
+		_fireDownloadStartedEvent: function(id) {
+			Core.callRpcMethodLocal("Core.fireEvent", ["FileTransfer.downloadStarted", id]);
+		},
+
+
 		// Handles the answer of uploading peer
 		// TODO use checksum to validate downloaded file
 		_downloadResponseHandler: function(id, ip, port, size, checksum) {
@@ -599,6 +634,7 @@ function getModule(Core) {
 			downloadData.size = size;
 			downloadData.received = 0;
 			downloadData.checksum = checksum;
+			downloadData.startTime = Date.now();
 
 			var path = downloadData.destinationPath;
 			var stream = fs.createWriteStream(path);
@@ -606,6 +642,8 @@ function getModule(Core) {
 			var con = net.createConnection(port, ip);
 
 			console.log('start downloading file to',path,'from',ip,port);
+
+			this._fireDownloadStartedEvent(id);
 
 			con.on('data', function(data) {
 				stream.write(data);
@@ -655,6 +693,9 @@ function getModule(Core) {
 		// The local path is the destination folder.
 		//
 		// Returns true if the download is started.
+		//
+		// TODO need additional information to distinguish equal file names
+		//
 		retrieveFile: function(networkName, fileName, localPath) {
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
@@ -722,7 +763,8 @@ function getModule(Core) {
 					checksum: self.ownDownloadRequests[id].checksum,
 					name: self.ownDownloadRequests[id].fileName,
 					destination: self.ownDownloadRequests[id].destinationPath,
-					network: self.ownDownloadRequests[id].network
+					network: self.ownDownloadRequests[id].network,
+					startTime: self.ownDownloadRequests[id].startTime
 				};
 
 				answerRequest(this.socket, Core.createJsonRpcResponse(this.requestId, info));
@@ -740,12 +782,22 @@ function getModule(Core) {
 			if(!self.shareFolder[networkName]) {
 				response = Core.createJsonRpcError(requestId, "Network not joined", Core.json_errors.internal_error);
 			} else {
-				self.shareFolder[networkName] = folder;
-				self.publicFiles[networkName] = self._getPublicFiles(networkName);
 
-				// TODO catch errors if folder is not readable.
+				try {
+					fs.statSync(folder);
+				} catch(e) {
+					console.log("Share folder (", folder, ") not found: ", e);
+					response = Core.createJsonRpcError(requestId, e.message, Core.json_errors["FileTransfer.noSuchFile"]);
+				}
 
-				response = Core.createJsonRpcResponse(requestId, true);
+				if(response === null) { // No error occured
+					self.shareFolder[networkName] = folder;
+					self.publicFiles[networkName] = self._getPublicFiles(networkName);
+
+					self._refreshFileList(networkName);
+
+					response = Core.createJsonRpcResponse(requestId, true);
+				}
 			}
 
 			answerRequest(this.socket, response);
@@ -825,9 +877,14 @@ function getModule(Core) {
 					}
 
 					setTimeout(function() {
-						if(listSocket.writeable) {
-							listSocket.write("END\n");
-						}
+						try {
+							listSocket.end("END\n");
+						} catch(e) {}
+
+						try {
+							listSocket.destroy();
+						} catch(e) {}
+
 						self._stopFileListingServer(server);
 					}, listenTimeout);
 				},

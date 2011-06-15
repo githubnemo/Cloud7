@@ -12,6 +12,10 @@ module Util
     not (%x[uname] =~ /CYGWIN/i).nil?
   end
 
+  def isDarwin?
+    not (%x[uname] =~ /Darwin/i).nil?
+  end
+
   def isValidArchive(path)
     `tar -tvzf #{path} 2>&1 >/dev/null`
     valid = $?.success?

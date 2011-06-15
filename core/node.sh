@@ -11,6 +11,16 @@ if [ -e "$CONFIG" ]; then
 	. $CONFIG
 fi
 
+NODE_ROOT="$(pwd)/$(dirname $0)/../node/"
+
+LIBRARY_PATH="$(pwd)/$(dirname $0)/lib/peers/libcage/src":"$(pwd)/$(dirname $0)/lib/peers/libev/.libs":
+
+DYLD_LIBRARY_PATH=$DYLD_LIBRARY_PATH:$LIBRARY_PATH
+export DYLD_LIBRARY_PATH
+
+LD_LIBRARY_PATH=$LD_LIBRARY_PATH:$LIBRARY_PATH
+export LD_LIBRARY_PATH
+
 no_nodejs() {
 	echo "node.js not found. Configure \$NODE_ROOT in file start_config or fix your PATH"
 	exit 1

@@ -9,11 +9,6 @@ var querystring = require('querystring');
  * - node.put() can only take buffers with a 16 bit length
  *   because libcage uses uint16_t as length.
  *
- * - it seems that libcage/nodejs is VERY time-sensitive.
- *   if a join takes too much time the join fails due to
- *   MISSED packets. This must be fixed _SOON_.
- *   See node-dht/examples/sample3_alt.js and add something
- *   which suspens execution for some time.
  */
 
 /**
@@ -23,11 +18,6 @@ var querystring = require('querystring');
  *   so the node can resume it's administrative tasks if it's
  *   restarted. (administrative tasks as in peer list refreshing)
  *
- * - modify generateRequestId() so once can specify the place to
- *   lookup for already assigned IDs.
- *
- * - NETWORK JOINED/LEFT EVENT
- *
  * - Events in general
  *
  */
@@ -35,13 +25,27 @@ var querystring = require('querystring');
 /**
  * global FIXMEs:
  *
- * - calling joinNetwork from the same client twice results in a weird
- *   list structure of DHT[networkPeersKey(network)].
- *   (Update: Verify, removed duplicate entries)
  */
 
 
 var cloud7tracker = 'cloud7.heroku.com';
+
+
+var TRACKER_PARSE_ERROR = -1010;				// Parsing of response failed
+var TRACKER_NETWORK_NOT_FOUND_ERROR = -1011;	// Network was not found
+var TRACKER_UNKNOWN_ERROR = -1012;				// The developer does not know this error
+var TRACKER_RESOLVE_ERROR = -1013;				// The tracker's IP address could not be resolved
+
+
+function TrackerError(id, message) {
+	this.id = id;
+	this.message = message;
+}
+
+
+function createTrackerError(id, message) {
+	return new TrackerError(id, message);
+}
 
 
 // cb(err, addresses)
@@ -52,9 +56,15 @@ function saveResolveHost(host, cb) {
 	dns.resolve4("www.google.com", cb);
 }
 
+
 // responseCallback(peer, error)
-//   peer: {ip: ..., port: ..., id: ...}
-//   error: Exception or null
+//   peer: {ip: ..., port: ..., dht_id: ...}
+//   error: TrackerError or null
+//
+// Possible error types are:
+// - TRACKER_PARSE_ERROR
+// - TRACKER_NETWORK_NOT_FOUND_ERROR
+// - TRACKER_RESOLVE_ERROR
 //
 function trackerNetworkRequest(networkName, responseCallback) {
 	var options = {
@@ -64,14 +74,14 @@ function trackerNetworkRequest(networkName, responseCallback) {
 		method: 'GET',
 	};
 
-	route.getDefaultRoute(function(gatewayIP, error) {
+	route.getDefaultRoute(function(gatewayIP) {
 		var gatewayAppendix;
 
-		if(error != null) {
+		if(gatewayIP === null) {
 			console.log("trackerNetworkRequest: Error while retrieving gateway IP");
 			gatewayAppendix = "";
 		} else {
-			gatewayAppendix = "" // "/" + gatewayIP;  FIXME issue 01
+			gatewayAppendix = "" // "/" + gatewayIP;  FIXME issue 02
 		}
 
 		options.path += gatewayAppendix;
@@ -83,12 +93,19 @@ function trackerNetworkRequest(networkName, responseCallback) {
 					try {
 						peer = JSON.parse(data);
 					} catch(e) {
-						return responseCallback(null, e);
+						return responseCallback(null,
+								createTrackerError(TRACKER_PARSE_ERROR, e));
 					}
 
-					// XXX keep status? not specified!
 					if(peer.status !== undefined) {
-						responseCallback(null, peer.status);
+						var id = TRACKER_UNKNOWN_ERROR;
+
+						switch(peer.status) {
+							case "Not found": id = TRACKER_NETOWRK_NOT_FOUND_ERROR;
+							break;
+						}
+
+						responseCallback(null, createTrackerError(id, peer.status));
 					} else {
 						responseCallback(peer, null);
 					}
@@ -99,7 +116,7 @@ function trackerNetworkRequest(networkName, responseCallback) {
 		saveResolveHost(cloud7tracker, function(err,_) {
 			if(err) {
 				console.log("Error resolving cloud7 tracker host:",err);
-				responseCallback(null, err);
+				responseCallback(null, createTrackerError(TRACKER_RESOLVE_ERROR, err));
 			} else {
 				networkRequest();
 			}
@@ -110,6 +127,13 @@ function trackerNetworkRequest(networkName, responseCallback) {
 
 // responseCallback(list, error)
 //
+// In case of an error, error is a TrackerError instance.
+// If no error occured, error is null.
+//
+// Possible error types are:
+// - TRACKER_PARSE_ERROR
+// - TRACKER_RESOLVE_ERROR
+//
 function trackerNetworkList(responseCallback) {
 	var options = {
 		host: cloud7tracker,
@@ -118,14 +142,17 @@ function trackerNetworkList(responseCallback) {
 		method: 'GET',
 	};
 
-	function getNetworkList() {
+	function getNetworkList(gatewayIP) {
+		options.path += "/"+gatewayIP;
+
 		http.get(options, function(res) {
 			res.on('data', function(data) {
 				var list;
 				try {
 					list = JSON.parse(data);
 				} catch(e) {
-					return responseCallback(null, e);
+					return responseCallback(null,
+							createTrackerError(TRACKER_PARSE_ERROR, e));
 				}
 				responseCallback(list, null);
 			});
@@ -134,10 +161,17 @@ function trackerNetworkList(responseCallback) {
 
 	saveResolveHost(cloud7tracker, function(err,_) {
 		if(err) {
-			console.log("Error resolving cloud7 tracker host:",err);
-			responseCallback(null, err);
+			console.log("trackerNetworkList: Error resolving cloud7 tracker host:",err);
+			responseCallback(null, createTrackerError(TRACKER_RESOLVE_ERROR, err));
 		} else {
-			getNetworkList();
+			route.getDefaultRoute(function(gatewayIP) {
+				if(gatewayIP === null) {
+					console.log("trackerNetworkList: Error while retrieving gateway address.");
+					getNetworkList("");
+				} else {
+					getNetworkList(gatewayIP);
+				}
+			});
 		}
 	});
 }
@@ -147,6 +181,13 @@ function trackerNetworkList(responseCallback) {
 //
 // Create network on the tracker and hand the generated admin token to
 // the callback as well as an error (null if no error occured).
+//
+// In case error != null, error is an TrackerError object.
+//
+// Possible error types are:
+// - TRACKER_PARSE_ERROR
+// - TRACKER_UNKNOWN_ERROR
+// - TRACKER_RESOLVE_ERROR
 //
 function trackerNetworkCreate(networkName, nodePort, nodeId, responseCallback) {
 	var options = {
@@ -176,10 +217,12 @@ function trackerNetworkCreate(networkName, nodePort, nodeId, responseCallback) {
 				try {
 					response = JSON.parse(data);
 				} catch(e) {
-					return responseCallback(null, e);
+					return responseCallback(null,
+						createTrackerError(TRACKER_PARSE_ERROR,e));
 				}
 				if(response.status != undefined) {
-					responseCallback(null, response.status);
+					responseCallback(null, createTrackerError(
+							TRACKER_UNKNOWN_ERROR, response.status));
 				} else {
 					responseCallback(response.token, null);
 				}
@@ -199,8 +242,12 @@ function trackerNetworkCreate(networkName, nodePort, nodeId, responseCallback) {
 			var localIP = response.connection.address()['address'];
 
 			route.getDefaultRoute(function(gatewayIP) {
-				// TODO check route === null
-				registerNetwork(localIP, gatewayIP);
+				if(gatewayIP === null) {
+					console.log("getRegistrationData: Can't determine gateway IP.");
+					registerNetwork(localIP, "");
+				} else {
+					registerNetwork(localIP, gatewayIP);
+				}
 			});
 		});
 	}
@@ -208,18 +255,21 @@ function trackerNetworkCreate(networkName, nodePort, nodeId, responseCallback) {
 	saveResolveHost(cloud7tracker, function(err,_) {
 		if(err) {
 			console.log("Error resolving cloud7 tracker host:",err);
-			responseCallback(null, err);
+			responseCallback(null, createTrackerError(TRACKER_RESOLVE_ERROR, err));
 		} else {
 			getRegistrationData();
 		}
 	});
 }
 
-function networkKey(networkName) { return makeBuffer(networkName); }
-function networkPeersKey(networkName) { return makeBuffer(networkName+"_peers"); }
 
 
 function makeBuffer(s) { return new Buffer(s.toString()); }
+
+function networkKey(networkName) { return makeBuffer(networkName); }
+
+function networkPeersKey(networkName) { return makeBuffer(networkName+"_peers"); }
+
 
 
 function getModule(Core) {
@@ -232,8 +282,23 @@ function getModule(Core) {
 	}
 
 
+	function setupModuleErrors() {
+		Core.addJsonError("Peers.invalidRequest", 		-1000, "An invalid peer request was received.");
+		Core.addJsonError("Peers.networkAlreadyExists", -1001, "The network could not be created because it already exists.");
+		Core.addJsonError("Peers.dhtJoin", 				-1002, "Network could not be joined because the DHT has it's reasons.");
+		Core.addJsonError("Peers.unknownNetwork", 		-1003, "The network selected is not joined.");
+		Core.addJsonError("Peers.networkNotFound", 		-1004, "The network selected is not found.");
+
+		// Tracker specific
+		Core.addJsonError("Peers.trackerInvalidResponse", 	-1005, "The tracker gave an invalid response.");
+		Core.addJsonError("Peers.trackerResolve", 			-1006, "The tracker could not be resolved.");
+	}
+
+
 	var PeerModule = function() {
 		// TODO configurable/automatic port
+
+		setupModuleErrors();
 
 		var peer = this;
 
@@ -311,12 +376,15 @@ function getModule(Core) {
 
 
 			function handleRequest(jsonData) {
-				if(peer.validRequests[jsonData.method] != undefined &&
-				   peer.validRequests[jsonData.method] != jsonData.params.length) {
+				if(peer.validRequests[jsonData.method] != undefined
+				&& peer.validRequests[jsonData.method] != jsonData.params.length) {
+
 					node.send(from, makeBuffer(Core.createJsonRpcError(jsonData.id,
 									'Undefined method or invalid param. count: '+jsonData,
-									Core.json_errors.invalid_request)));
+									Core.json_errors["Peers.invalidRequest"])));
+
 					console.log('Invalid request',jsonData,'from',from);
+
 					return;
 				}
 
@@ -324,9 +392,7 @@ function getModule(Core) {
 				if(jsonData.method === "join") {
 					var networkName = jsonData.params[0];
 
-					if(true || peer.networks[networkName] !== undefined) {
-						// FIXME check disabled for testing purposes
-
+					if(peer.networks[networkName] !== undefined) {
 						// We own the network, it's ok for him to join us
 						node.send(from, makeBuffer(
 									Core.createJsonRpcResponse(jsonData.id, true)));
@@ -334,10 +400,9 @@ function getModule(Core) {
 						peer._addPeerToNetwork(networkName, from);
 					} else {
 						// The peer got the wrong guy, we are not the network owner
-						// XXX is this really necessary? Can't everyone accept new peers?
 						node.send(from, makeBuffer(Core.createJsonRpcError(jsonData.id,
 													'Not my network: '+networkName,
-													Core.json_errors.internal_error)));
+													Core.json_errors['Peers.networkNotFound'])));
 					}
 
 				// Open network leave.
@@ -623,7 +688,22 @@ function getModule(Core) {
 					answerRequest(socket, Core.createJsonRpcResponse(moduleRequestId, token));
 					console.log('added network',name,'token',token);
 				} else {
-					answerRequest(socket, Core.createJsonRpcError(moduleRequestId, error, Core.json_errors.internal_error));
+					var errorId = Core.json_errors.internal_error;
+
+					switch(error.id) {
+						case TRACKER_PARSE_ERROR:
+							errorId = Core.json_errors['Peers.trackerInvalidResponse'];
+							break;
+						case TRACKER_UNKNOWN_ERROR:
+							// FIXME see issue #13
+							errorId = Core.json_errors['Peers.networkAlreadyExists'];
+							break;
+						case TRACKER_RESOLVE_ERROR:
+							errorId = Core.json_errors['Peers.trackerResolve'];
+							break;
+					}
+
+					answerRequest(socket, Core.createJsonRpcError(moduleRequestId, error.message, errorId));
 					console.log('error while creating network', name, error);
 				}
 			});
@@ -660,7 +740,18 @@ function getModule(Core) {
 					answerRequest(socket, Core.createJsonRpcResponse(requestId, list));
 					console.log('network list', list);
 				} else {
-					answerRequest(socket, Core.createJsonRpcError(requestId, error, Core.json_errors.internal_error));
+					var errorId = Core.json_errors.internal_error;
+
+					switch(error.id) {
+						case TRACKER_PARSE_ERROR:
+							errorId = Core.json_errors["Peers.trackerInvalidResponse"];
+							break;
+						case TRACKER_RESOLVE_ERROR:
+							errorId = Core.json_errors["Peers.trackerResolve"];
+							break;
+					}
+
+					answerRequest(socket, Core.createJsonRpcError(requestId, error.message, errorId));
 					console.log('error while listing networks', error);
 				}
 			});
@@ -670,19 +761,19 @@ function getModule(Core) {
 		// Tracker and DHT interaction
 		// ------------------------------------
 
-		joinNetwork: function(networkName) {
-			var peer = this.module.obj;			// this very module
-			var socket = this.socket;			// requesting module's socket
-			var moduleReqId = this.requestId;	// requesting module's request id
 
+		// joinTimeout is the time in msecs the rootPeers has to respond in
+		_tryJoinNetwork: function(networkName, joinTimeout, successCallback) {
 			// TODO ask the DHT for the network in case we're already connected
+
+			// TODO add additional discovery methods
+
+			var peer = this;
 
 			// Get network from tracker.
 			trackerNetworkRequest(networkName, function(rootPeer, error) {
 				if(error != null) {
-					answerRequest(socket, Core.createJsonRpcError(moduleReqId,
-							'Error in getting network from tracker: ' + error,
-							Core.json_errors.internal_error));
+					successCallback(false, error.id, error.message);
 					return;
 				}
 
@@ -693,10 +784,8 @@ function getModule(Core) {
 					console.log("joining network",networkName,'peer',rootPeer,'success',success);
 
 					if(!success) {
-						answerRequest(socket, Core.createJsonRpcError(moduleReqId,
-							'Error in joining network ' + networkName + ': DHT join failed',
-							Core.json_errors.internal_error));
 						console.log("Join: NO SUCCESS!", networkName, 'peer', rootPeer, success);
+						successCallback(false, Core.json_errors.dhtJoin, "Unknown reason.");
 						return;
 					}
 
@@ -706,23 +795,29 @@ function getModule(Core) {
 					// FIXME:  experimental. It's not guaranteed that the first peer is the
 					// FIXME:: network owner. This should be verified.
 					// Fallback to an ID from the network and ask him to join us.
-					// TODO every peer should be able to accept new peers!
-					if(peers.indexOf(rootPeer.dht_id) < 0) {
+					/*if(peers.indexOf(rootPeer.dht_id) < 0) {
 						rootPeer.dht_id = peers[0];
-					}
+					}*/
+
+
+					var joinTimeoutId = setTimeout(function() {
+						successCallback(false, Core.json_errors.dhtJoin, "No answer from root peer.");
+					}, joinTimeout);
 
 					// Register handler for join request response.
 					peer._addPendingRequest(requestId, function(response, error) {
 						console.log(response);
+
+						clearTimeout(joinTimeoutId);
+
 						if(error == null && response === true) {
 							peer._addJoinedNetwork(rootPeer, networkName);
 
-							answerRequest(socket, Core.createJsonRpcResponse(moduleReqId, true));
+							successCallback(true);
 
 							console.log('joined network', networkName);
 						} else {
-							answerRequest(socket, Core.createJsonRpcError(moduleReqId, error,
-									Core.json_errors.internal_error));
+							successCallback(false, error.code, error.message);
 
 							console.log('error while joining network', networkName);
 						}
@@ -732,6 +827,42 @@ function getModule(Core) {
 					peer.node.send(rootPeer.dht_id, makeBuffer(request));
 				});
 			});
+
+		},
+
+		// Signature: joinNetwork(networkName, retries=3) => True or Error
+		//
+		joinNetwork: function(networkName, retries) {
+			var peer = this.module.obj;			// this very module
+			var socket = this.socket;			// requesting module's socket
+			var moduleReqId = this.requestId;	// requesting module's request id
+
+			var maxJoinAttempts = retries || 3;
+			var joinTimeout = 2000;
+
+			function successfulJoin() {
+				answerRequest(socket, Core.createJsonRpcResponse(moduleReqId, true));
+			}
+
+			function unsuccessfulJoin(errorId, errorMessage) {
+				answerRequest(socket, Core.createJsonRpcError(moduleReqId,
+						'Error in joining network ' + networkName + ': '+ errorMessage,
+						errorId));
+			}
+
+			function loopJoin(i) {
+				peer._tryJoinNetwork(networkName, joinTimeout, function(ok, errorId, errorMessage) {
+					if(!ok && i < maxJoinAttempts) {
+						setTimeout(loopJoin, 0, i+1);
+					} else if(!ok) {
+						unsuccessfulJoin(errorId, errorMessage);
+					} else {
+						successfulJoin();
+					}
+				});
+			}
+
+			loopJoin(1);
 		},
 
 		joinProtectedNetwork: function(name, password) {
@@ -759,7 +890,7 @@ function getModule(Core) {
 
 			if(network === undefined) {
 				return answerRequest(socket, Core.createJsonRpcError(moduleRequestId,
-							"Unknown network: "+name, Core.json_errors.internal_error));
+							"Unknown network: "+name, Core.json_errors['Peers.unknownNetwork']));
 			}
 
 			var requestId = Core.generateRequestId();
