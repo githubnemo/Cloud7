@@ -48,14 +48,6 @@ trait Timeout {
   def setTimeout(t:Int) = { timeout = t; this }
   def setTimeoutCallback(c: () => Unit) = { timeoutCallback = c; this }
 }
-
-/*case class RequestWithTimeout (
-		method:String, 
-		params:List[Any], 
-		callback: JSONRPC2Response => Unit, 
-		timeoutCallback: Unit => Unit = Unit => Unit, 
-		timeout:Int = 10000
-)*/
 					
 
 /**
@@ -84,7 +76,7 @@ object Manager extends Actor {
   /**
    * The TCP Socket on which we commuicate with the Cloud7 core
    */
-  var clientSocket:Socket = new Socket()
+  var clientSocket:Socket = _
   
   /**
    * Reference to the Writer Actor.
@@ -165,10 +157,9 @@ object Manager extends Actor {
   def initializeConnection:Unit = {
     
 	val error = (try {
-		// TODO: Change back to localhost
-		// 192.168.156.129
-		clientSocket.connect(new InetSocketAddress("localhost", 8124), 1000)
-		false
+	  clientSocket = new Socket()
+	  clientSocket.connect(new InetSocketAddress("localhost", 8124), 1000)
+	  false
 	} catch {
 	  // TODO: Maybe more specific exception handling? Socket throws
 	  // the following extension
@@ -235,12 +226,20 @@ object Manager extends Actor {
   def registerTimeout(requestId:Int, x:Timeout) {
     println("registering timeout for request id i = " + requestId)
     val actor = Actor.actor {
+      var enabled = true
        Actor.self.reactWithin(x.timeout) {
-        case TIMEOUT => 
-          x.timeoutCallback()
+        case TIMEOUT =>
+          callbacks.remove(requestId)
           timeoutActors.remove(requestId)
+          if(enabled) {
+        	x.timeoutCallback()
+          }
         
-        case 'Exit => println("Killed actor for Id " + requestId + " before timeout expired"); exit()
+        case 'Disable => 
+          println("Disabled actor for Id " + requestId + " before timeout expired");
+          enabled = false
+        
+
       }
     }.start
     timeoutActors.put(requestId, actor)
@@ -282,8 +281,8 @@ object Manager extends Actor {
       
       val id = response.getID().toString().toLong
       
-      timeoutActors.remove(id).map { b => b ! 'Exit }
-      callbacks(id)(response)
+      timeoutActors.get(id).map { b => b ! 'Disable }      
+      callbacks.get(id).map { b => b(response) }
       
     }
     else {
