@@ -44,7 +44,8 @@ function splitInLists(list, limitPerList) {
 
 	for(var i=0; i < list.length; i++) {
 		if(list[i].length > limitPerList) {
-			throw "element " + i + " is bigger than limit per list"
+			console.log("splitInLists: Ignoring file", list[i]);
+			continue; // Element is too big for limit
 		}
 
 		if(currentCount+list[i].length == limitPerList) { // fits exactly (fills up the list)
@@ -876,9 +877,14 @@ function getModule(Core) {
 					}
 
 					setTimeout(function() {
-						if(listSocket.writeable) {
-							listSocket.write("END\n");
-						}
+						try {
+							listSocket.end("END\n");
+						} catch(e) {}
+
+						try {
+							listSocket.destroy();
+						} catch(e) {}
+
 						self._stopFileListingServer(server);
 					}, listenTimeout);
 				},

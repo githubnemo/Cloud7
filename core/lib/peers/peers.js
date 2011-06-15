@@ -392,9 +392,7 @@ function getModule(Core) {
 				if(jsonData.method === "join") {
 					var networkName = jsonData.params[0];
 
-					if(true || peer.networks[networkName] !== undefined) {
-						// FIXME check disabled for testing purposes
-
+					if(peer.networks[networkName] !== undefined) {
 						// We own the network, it's ok for him to join us
 						node.send(from, makeBuffer(
 									Core.createJsonRpcResponse(jsonData.id, true)));
@@ -402,10 +400,9 @@ function getModule(Core) {
 						peer._addPeerToNetwork(networkName, from);
 					} else {
 						// The peer got the wrong guy, we are not the network owner
-						// XXX is this really necessary? Can't everyone accept new peers?
 						node.send(from, makeBuffer(Core.createJsonRpcError(jsonData.id,
 													'Not my network: '+networkName,
-													Core.json_errors.internal_error)));
+													Core.json_errors['Peers.networkNotFound'])));
 					}
 
 				// Open network leave.
@@ -765,7 +762,8 @@ function getModule(Core) {
 		// ------------------------------------
 
 
-		_tryJoinNetwork: function(networkName, successCallback) {
+		// joinTimeout is the time in msecs the rootPeers has to respond in
+		_tryJoinNetwork: function(networkName, joinTimeout, successCallback) {
 			// TODO ask the DHT for the network in case we're already connected
 
 			// TODO add additional discovery methods
@@ -797,13 +795,21 @@ function getModule(Core) {
 					// FIXME:  experimental. It's not guaranteed that the first peer is the
 					// FIXME:: network owner. This should be verified.
 					// Fallback to an ID from the network and ask him to join us.
-					if(peers.indexOf(rootPeer.dht_id) < 0) {
+					/*if(peers.indexOf(rootPeer.dht_id) < 0) {
 						rootPeer.dht_id = peers[0];
-					}
+					}*/
+
+
+					var joinTimeoutId = setTimeout(function() {
+						successCallback(false, Core.json_errors.dhtJoin, "No answer from root peer.");
+					}, joinTimeout);
 
 					// Register handler for join request response.
 					peer._addPendingRequest(requestId, function(response, error) {
 						console.log(response);
+
+						clearTimeout(joinTimeoutId);
+
 						if(error == null && response === true) {
 							peer._addJoinedNetwork(rootPeer, networkName);
 
@@ -811,7 +817,7 @@ function getModule(Core) {
 
 							console.log('joined network', networkName);
 						} else {
-							successCallback(false, error);
+							successCallback(false, error.code, error.message);
 
 							console.log('error while joining network', networkName);
 						}
@@ -832,6 +838,7 @@ function getModule(Core) {
 			var moduleReqId = this.requestId;	// requesting module's request id
 
 			var maxJoinAttempts = retries || 3;
+			var joinTimeout = 2000;
 
 			function successfulJoin() {
 				answerRequest(socket, Core.createJsonRpcResponse(moduleReqId, true));
@@ -844,7 +851,7 @@ function getModule(Core) {
 			}
 
 			function loopJoin(i) {
-				peer._tryJoinNetwork(networkName, function(ok, errorId, errorMessage) {
+				peer._tryJoinNetwork(networkName, joinTimeout, function(ok, errorId, errorMessage) {
 					if(!ok && i < maxJoinAttempts) {
 						setTimeout(loopJoin, 0, i+1);
 					} else if(!ok) {
