@@ -877,9 +877,10 @@ function getModule(Core) {
 					}
 
 					setTimeout(function() {
-						if(listSocket.writeable) {
+						try {
 							listSocket.write("END\n");
-						}
+						} catch(e) {}
+
 						self._stopFileListingServer(server);
 					}, listenTimeout);
 				},
