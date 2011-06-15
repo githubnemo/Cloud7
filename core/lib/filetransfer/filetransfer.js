@@ -881,6 +881,10 @@ function getModule(Core) {
 							listSocket.end("END\n");
 						} catch(e) {}
 
+						try {
+							listSocket.destroy();
+						} catch(e) {}
+
 						self._stopFileListingServer(server);
 					}, listenTimeout);
 				},
