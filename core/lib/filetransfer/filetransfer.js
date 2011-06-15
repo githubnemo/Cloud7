@@ -520,44 +520,47 @@ function getModule(Core) {
 		},
 
 
+		_refreshFileList: function(networkName) {
+			var self = this;
+
+			console.log("Refreshing file list in DHT.");
+
+			Core.callRpcMethodLocal("Peers.getMyId", [], function(response) {
+				var peerId = response.result;
+
+				console.log("Got peerId", peerId, networkName);
+
+				function add(i) {
+					if(i >= self.publicFiles[networkName].length) {
+						return;
+					}
+
+					var fileObj = self.publicFiles[networkName][i];
+					var fileHash = networkFileHash(networkName, self._fileNameHash(fileObj.file));
+
+					//console.log("adding",fileHash,"(",fileObj.file,")to DHT")
+
+					Core.callRpcMethodLocal("Peers.DHTput", [fileHash, peerId, self.fileListTTL / 1000], function() {
+						setTimeout(add, 0, i+1);
+					});
+				}
+
+				add(0);
+			});
+		},
+
+
 		// Publish public file list in the DHT
 		_startPublishingFileList: function(networkName) {
 			var self = this;
 
 			console.log("_startPublishingFileList:", networkName)
 
-			function fileListRefresher() {
-				// TODO:  supply file content hash for every file to distinguish
-				// TODO:: files with same name but different content
-				console.log("Refreshing file list in DHT.");
+			self.publishingNetworks[networkName] = setInterval(function() {
+					self._refreshFileList(networkName);
+			}, self.fileListTTL);
 
-				Core.callRpcMethodLocal("Peers.getMyId", [], function(response) {
-					var peerId = response.result;
-
-					console.log("Got peerId", peerId, networkName);
-
-					function add(i) {
-						if(i >= self.publicFiles[networkName].length) {
-							return;
-						}
-
-						var fileObj = self.publicFiles[networkName][i];
-						var fileHash = networkFileHash(networkName, self._fileNameHash(fileObj.file));
-
-						//console.log("adding",fileHash,"(",fileObj.file,")to DHT")
-
-						Core.callRpcMethodLocal("Peers.DHTput", [fileHash, peerId, self.fileListTTL / 1000], function() {
-							setTimeout(add, 0, i+1);
-						});
-					}
-
-					add(0);
-				});
-			}
-
-			self.publishingNetworks[networkName] = setInterval(fileListRefresher, self.fileListTTL);
-
-			fileListRefresher();
+			self._refreshFileList(networkName);
 		},
 
 
@@ -789,6 +792,8 @@ function getModule(Core) {
 				if(response === null) { // No error occured
 					self.shareFolder[networkName] = folder;
 					self.publicFiles[networkName] = self._getPublicFiles(networkName);
+
+					self._refreshFileList(networkName);
 
 					response = Core.createJsonRpcResponse(requestId, true);
 				}
