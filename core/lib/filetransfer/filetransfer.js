@@ -77,7 +77,15 @@ function getModule(Core) {
 	}
 
 
+	function setupModuleErrors() {
+		Core.addJsonError("FileTransfer.fileServerStart", 	-2000, "File server start went wrong.");
+		Core.addJsonError("FileTransfer.noSuchFile", 		-2001, "File or directory supplied/used not found.");
+	}
+
+
 	function FileTransfer() {
+
+		setupModuleErrors();
 
 		this.peersModule = Core.getModule("Peers")
 
@@ -227,6 +235,12 @@ function getModule(Core) {
 			self.shareFolder[networkName] = self.defaultShareFolder;
 			self.publicFiles[networkName] = self._getPublicFiles(networkName);
 
+			try {
+				fs.statSync(self.defaultShareFolder);
+			} catch(e) {
+				console.log("Default share folder (", self.defaultShareFolder, ") not found: ", e);
+			}
+
 			console.log("I share", self.publicFiles[networkName].length, "files in network", networkName);
 
 			self._startPublishingFileList(networkName);
@@ -286,7 +300,13 @@ function getModule(Core) {
 				if(ip == null || port == null) {
 					// Error occured
 					console.log("Error while starting file server");
-					// TODO handle error
+
+					var errorResponse = Core.createJsonRpcError(request.id,
+							"File server start failed.",
+							Core.json_errors["FileTransfer.fileServerStart"]);
+
+					Core.callRpcMethodLocal("sendMessage", [senderId, errorResponse]);
+
 					return;
 				}
 
@@ -760,12 +780,20 @@ function getModule(Core) {
 			if(!self.shareFolder[networkName]) {
 				response = Core.createJsonRpcError(requestId, "Network not joined", Core.json_errors.internal_error);
 			} else {
-				self.shareFolder[networkName] = folder;
-				self.publicFiles[networkName] = self._getPublicFiles(networkName);
 
-				// TODO catch errors if folder is not readable.
+				try {
+					fs.statSync(folder);
+				} catch(e) {
+					console.log("Share folder (", folder, ") not found: ", e);
+					response = Core.createJsonRpcError(requestId, e.message, Core.json_errors["FileTransfer.noSuchFile"]);
+				}
 
-				response = Core.createJsonRpcResponse(requestId, true);
+				if(response === null) { // No error occured
+					self.shareFolder[networkName] = folder;
+					self.publicFiles[networkName] = self._getPublicFiles(networkName);
+
+					response = Core.createJsonRpcResponse(requestId, true);
+				}
 			}
 
 			answerRequest(this.socket, response);
