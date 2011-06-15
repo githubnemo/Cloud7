@@ -306,6 +306,8 @@ function getModule(Core) {
 		// File list answers can be split up to many lists. The receiver must be
 		// prepared to receive a bunch of lists under the same request id.
 		//
+		// TODO flood protection
+		//
 		_answerListFilesRequest: function(senderId, request) {
 			var network = request.params[0];
 
@@ -323,12 +325,17 @@ function getModule(Core) {
 				return;
 			}
 
-			var lists = splitInLists(this.publicFiles[network].map(function(e) { return e.file; }), 100);
+			function createSplitableFileObject(file, size) {
+				var obj = {file: file, size: size};
+				obj.length = file.length + String(size).length;
+				return obj;
+			}
 
-			console.log("LISTSLENGHT",lists.length)
+			var lists = splitInLists(this.publicFiles[network].map(function(e) { return createSplitableFileObject(e.file, e.size); }), 400);
 
 			for(var i=0; i < lists.length; i++) {
-				var response = Core.createJsonRpcResponse(request.id, lists[i]);
+
+				var response = Core.createJsonRpcResponse(request.id, lists[i].map(function(e) {delete e.length; return e;}));
 
 				console.log("_answerListFilesRequest response is", response.length,"chars.")
 
