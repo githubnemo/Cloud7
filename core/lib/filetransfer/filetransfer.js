@@ -136,10 +136,6 @@ function getModule(Core) {
 		// Time to live of the file list of this peer.
 		// This is also the republishing interval.
 		this.fileListTTL = 60000;
-
-		// Everything should be set up. Start publishing.
-		// TODO fetch active networks (if any) and start publishing
-		//this._startPublishingFileList();
 	}
 
 
@@ -474,7 +470,6 @@ function getModule(Core) {
 				try {
 					files = fs.readdirSync(folder);
 				} catch(e) {
-					// TODO report error to user somehow?
 					console.log("_getPublicFiles: Error while reading", folder, ":", e);
 					return publicFiles;
 				}
@@ -694,6 +689,9 @@ function getModule(Core) {
 		// The local path is the destination folder.
 		//
 		// Returns true if the download is started.
+		//
+		// TODO need additional information to distinguish equal file names
+		//
 		retrieveFile: function(networkName, fileName, localPath) {
 			var socket = this.socket;
 			var moduleRequestId = this.requestId;
