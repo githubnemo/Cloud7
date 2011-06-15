@@ -25,6 +25,7 @@ This should build Cloud7 on Ubuntu. If you encounter any errors, run `rake verbo
     * OpenSSL
     * make
     * wget
+    * patch (Util/patch)
     * ocaml
     * ocaml-base
     * libncurses-devel
@@ -55,7 +56,11 @@ Now install rake using rubygems like this:
 
 Unfortunately omake is not available for Cygwin and libcage uses it, so we have to compile it ourselves:
 
-    # TODO: Instructions
+    $ wget http://omake.metaprl.org/downloads/omake-0.9.8.6-0.rc1.tar.gz
+	$ tar -xvzf omake-0.9.8.6-0.rc1.tar.gz
+	$ cd omake-0.9.8.6
+	# Edit lib/build/OCaml.om and uncomment -warn-error in public.OCAMLFLAGS
+	$ make install
 
 ### 4. Start building
 
