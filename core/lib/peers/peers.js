@@ -665,19 +665,18 @@ function getModule(Core) {
 		// Tracker and DHT interaction
 		// ------------------------------------
 
-		joinNetwork: function(networkName) {
-			var peer = this.module.obj;			// this very module
-			var socket = this.socket;			// requesting module's socket
-			var moduleReqId = this.requestId;	// requesting module's request id
 
+		_tryJoinNetwork: function(networkName, successCallback) {
 			// TODO ask the DHT for the network in case we're already connected
+
+			// TODO add additional discovery methods
+
+			var peer = this;
 
 			// Get network from tracker.
 			trackerNetworkRequest(networkName, function(rootPeer, error) {
 				if(error != null) {
-					answerRequest(socket, Core.createJsonRpcError(moduleReqId,
-							'Error in getting network from tracker: ' + error,
-							Core.json_errors.internal_error));
+					successCallback(false, 'Error in getting network from tracker: ' + error);
 					return;
 				}
 
@@ -688,10 +687,8 @@ function getModule(Core) {
 					console.log("joining network",networkName,'peer',rootPeer,'success',success);
 
 					if(!success) {
-						answerRequest(socket, Core.createJsonRpcError(moduleReqId,
-							'Error in joining network ' + networkName + ': DHT join failed',
-							Core.json_errors.internal_error));
 						console.log("Join: NO SUCCESS!", networkName, 'peer', rootPeer, success);
+						successCallback(false);
 						return;
 					}
 
@@ -701,7 +698,6 @@ function getModule(Core) {
 					// FIXME:  experimental. It's not guaranteed that the first peer is the
 					// FIXME:: network owner. This should be verified.
 					// Fallback to an ID from the network and ask him to join us.
-					// TODO every peer should be able to accept new peers!
 					if(peers.indexOf(rootPeer.dht_id) < 0) {
 						rootPeer.dht_id = peers[0];
 					}
@@ -712,12 +708,11 @@ function getModule(Core) {
 						if(error == null && response === true) {
 							peer._addJoinedNetwork(rootPeer, networkName);
 
-							answerRequest(socket, Core.createJsonRpcResponse(moduleReqId, true));
+							successCallback(true);
 
 							console.log('joined network', networkName);
 						} else {
-							answerRequest(socket, Core.createJsonRpcError(moduleReqId, error,
-									Core.json_errors.internal_error));
+							successCallback(false, error);
 
 							console.log('error while joining network', networkName);
 						}
@@ -727,6 +722,41 @@ function getModule(Core) {
 					peer.node.send(rootPeer.dht_id, makeBuffer(request));
 				});
 			});
+
+		},
+
+		// Signature: joinNetwork(networkName, retries=3) => True or Error
+		//
+		joinNetwork: function(networkName, retries) {
+			var peer = this.module.obj;			// this very module
+			var socket = this.socket;			// requesting module's socket
+			var moduleReqId = this.requestId;	// requesting module's request id
+
+			var maxJoinAttempts = retries || 3;
+
+			function successfulJoin() {
+				answerRequest(socket, Core.createJsonRpcResponse(moduleReqId, true));
+			}
+
+			function unsuccessfulJoin(reason) {
+				answerRequest(socket, Core.createJsonRpcError(moduleReqId,
+									'Error in joining network ' + networkName + ': DHT join failed: ' + reason,
+									Core.json_errors.internal_error));
+			}
+
+			function loopJoin(i) {
+				peer._tryJoinNetwork(networkName, function(ok,error) {
+					if(!ok && i < maxJoinAttempts) {
+						setTimeout(loopJoin, 0, i+1);
+					} else if(!ok) {
+						unsuccessfulJoin(error);
+					} else {
+						successfulJoin();
+					}
+				});
+			}
+
+			loopJoin(1);
 		},
 
 		joinProtectedNetwork: function(name, password) {
