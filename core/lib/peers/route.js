@@ -16,8 +16,10 @@ function getDefaultRoute(responseCb) {
 		return getDefaultRouteLinux(responseCb);
 	} else if(osType == "FreeBSD" || osType == "Darwin") {
 		return getDefaultRouteBSD(responseCb);
-	} else if(osType == "Windows") {
+	} else if(osType == "Windows" || osType.match(/cygwin/i)) {
 		return getDefaultRouteWindows(responseCb);
+	} else {
+		throw new Error("Unknown OS:" + osType);
 	}
 	return null;
 }
@@ -59,6 +61,8 @@ function getDefaultRouteWindows(responseCb) {
 		var routeString = stdout.trim();
 
 		var gateway = routeString.split(' ').filter(function(x) { return x.length > 0 })[2];
+
+		console.log("getDefaultRouteWindows:", gateway)
 
 		responseCb(gateway);
 	});
