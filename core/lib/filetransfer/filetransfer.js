@@ -290,6 +290,7 @@ function getModule(Core) {
 			}
 
 			var filePath = path.join(file.folder,file.file);
+			var fileSize = file.size;
 
 			console.log("ATTEMPT TO SERVE FILE", file, "path:", filePath);
 
@@ -309,7 +310,6 @@ function getModule(Core) {
 
 				console.log("IN SERVER HANDLER FOR FILE", file);
 
-				var fileSize = file.size;
 				var fileChecksum = "f8a9fcd0170d9ef0f03891f72f21568d6895e66a"; // TODO compute sha1 checksum
 
 				var downloadInfo = {ip: ip, port: port, size: fileSize, checksum: fileChecksum};
