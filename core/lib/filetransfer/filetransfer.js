@@ -625,6 +625,11 @@ function getModule(Core) {
 		},
 
 
+		_fireDownloadFinishedEvent: function(id) {
+			Core.callRpcMethodLocal("Core.fireEvent", ["FileTransfer.downloadFinished", id]);
+		},
+
+
 		// Handles the answer of uploading peer
 		// TODO use checksum to validate downloaded file
 		_downloadResponseHandler: function(id, ip, port, size, checksum) {
@@ -654,6 +659,9 @@ function getModule(Core) {
 				stream.end();
 				//stream.destroy();
 				console.log('finished downloading file to',path,'from',ip,port,"download info:",downloadData);
+
+				self._fireDownloadFinishedEvent(id);
+
 				self._deleteOwnDownloadRequest(id);
 			});
 
