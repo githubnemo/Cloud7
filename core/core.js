@@ -168,12 +168,19 @@ Core.prototype = {
 	},
 
 	registerRpcModule: function(name, methods, socket) {
-		registeredModules[name] = new RpcModule(name, methods, socket);
-		return true;
+		if(registeredModules[name]) {
+			return false;
+		}
+		var token = String(Math.floor(Math.random()*10000));
+
+		registeredModules[name] = new RpcModule(name, methods, socket, token);
+
+		return token;
 	},
 
 	unregisterModule: function(name) {
 		delete registeredModules[name];
+		return true;
 	},
 
 	getModule: function(name) {
@@ -421,9 +428,27 @@ var CoreModule = {
 		delete pendingRequests[id];
 	},
 
+	/*
+	 * Returns a token string which is used to authenticate
+	 * the owner of the module (for removing the module and other
+	 * privileged tasks).
+	 *
+	 * Returns false if there's already a module with that name.
+	 */
 	registerModule: function(name, methods) {
 		var success = this.core.registerRpcModule(name, methods, this.socket);
-		// TODO return security token to sender
+		this.socket.write(this.core.createJsonRpcResponse(this.requestId, success));
+	},
+
+	unregisterModule: function(name, token) {
+		var module = this.core.getModule(name);
+
+		if(!module) {
+			success = false;
+		} else {
+			success = (module.token === token) && this.core.unregisterModule(name);
+		}
+
 		this.socket.write(this.core.createJsonRpcResponse(this.requestId, success));
 	},
 
@@ -449,6 +474,7 @@ var CoreModule = {
 		var listeners = registeredEvents[name];
 
 		if(listeners === undefined) {
+			// TODO error to sender
 			return;
 		}
 
@@ -460,6 +486,7 @@ var CoreModule = {
 
 			if(typeof method !== 'function') {
 				console.log("Can't fire event "+name+" to "+module+": No method.");
+				// TODO error to sender
 				return;
 			}
 
@@ -612,9 +639,10 @@ LocalModule.prototype = {
  *
  * How to register a rpc module: core.registerRpcModule("Peers", methods, socket);
  */
-var RpcModule = function(name, methods, socket) {
+var RpcModule = function(name, methods, socket, token) {
 	Module.apply(this, [name, methods]);
 	this.socket = socket;
+	this.token = token;
 }
 
 RpcModule.prototype = {
