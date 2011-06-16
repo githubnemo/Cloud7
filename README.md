@@ -1,18 +1,24 @@
-Very very early development.
+Very early development.
 
-core.js currently contains simple testing code of what our core might look like, if we decide to implement it using [Node.js](http://www.nodejs.org). You can use it like this:
+Cloud7 tries to realize a adhoc file transfer system for local area networks.
+So far, only untrusted networks and a simple client-to-client file transfer are
+implemented, but there's a lot room for improvement.
 
-	$ node core.js &
-	$ nc 127.0.0.1 8124
-	{ "method": "echo", "params": ["Hello JSON-RPC"], "id": 1}
-	magie:Hello JSON-RPC 1
+This project uses [Node.js](http://www.nodejs.org).
+
+If you want to participate, we need a lot of tests (see core/lib/tests),
+much improvement regarding file transfer and GUI as well as a config module.
+
+Also see the `Todo` page in the wiki.
+
+If you want to try cloud7, check out the following sections.
 
 ## Building on Ubuntu
 
 This should build Cloud7 on Ubuntu. If you encounter any errors, run `rake verbose=1` instead of `rake` and let us know where the problem happens.
 
-    $ sudo apt-cache update
-    $ sudo git apt-get install libssl-dev zlib1g-dev omake omake-doc libboost-all-dev
+    $ sudo apt-get update
+    $ sudo apt-get install libssl-dev zlib1g-dev omake omake-doc libboost-all-dev
     $ git clone git://github.com/x3ro/Cloud7.git
     $ cd Cloud7
     $ rake
