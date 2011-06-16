@@ -7,7 +7,7 @@ function getModule(Core) {
 	var fail = assert.fail;
 	var equal = assert.equal;
 	var deepEqual = assert.deepEqual;
-
+	var strictEqual = assert.strictEqual;
 
 	function invokeRpcMethod(name, params, resultCallback) {
 		Core.callRpcMethodLocal(name, params, resultCallback);
@@ -63,6 +63,58 @@ function getModule(Core) {
 			invokeRpcMethod("Core.echo", ["foo"], function(response) {
 				equal( response.result, "foo" );
 			});
+		};
+
+		this.test_echoDelay = function() {
+			var startTime = Date.now();
+			var delay = 400;
+			var tolerance = 200;
+			invokeRpcMethod("Core.echoDelay", ["foo", delay], function(response) {
+				ok( Date.now() - startTime < (delay+tolerance) );
+				equal( response.result, "foo" );
+			});
+		};
+
+		this.test_moduleRegistration = function() {
+			var moduleName = "testModule";
+			var moduleToken = null; // set in testRegisterModule
+
+
+			function testRegisterModule() {
+				invokeRpcMethod("Core.registerModule", [moduleName], function(response) {
+					ok( typeof response.result === "string", "Registration failed" );
+
+					moduleToken = response.result;
+
+					testUnregisterModule1();
+				});
+			}
+
+			function testUnregisterModule1() {
+				invokeRpcMethod("Core.unregisterModule", [moduleName, "invalidToken"], function(response) {
+					strictEqual( response.result, false, "Unregistration with invalidToken succeeded." );
+
+					testUnregisterModule2();
+				});
+			}
+
+			function testUnregisterModule2() {
+				invokeRpcMethod("Core.unregisterModule", [moduleName, moduleToken], function(response) {
+					strictEqual( response.result, true, "Unregistration with valid token failed." );
+				});
+			}
+
+			function testUnregisterModule3() {
+				invokeRpcMethod("Core.unregisterModule", [moduleName, moduleToken], function(response) {
+					strictEqual( response.result, false, "Unregistration on unregistered module succeeded." );
+				});
+			}
+
+			testRegisterModule(); // start test chain
+		};
+
+		function test_fireEvent() {
+
 		};
 
 	}
