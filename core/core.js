@@ -510,15 +510,29 @@ var CoreModule = {
 	},
 
 	/*
+	 * registerModule(name, methods=[])
+	 *
 	 * Returns a token string which is used to authenticate
 	 * the owner of the module (for removing the module and other
 	 * privileged tasks).
 	 *
 	 * Returns false if there's already a module with that name.
+	 *
 	 */
 	registerModule: function(name, methods) {
-		var success = this.core.registerRpcModule(name, methods, this.socket);
-		this.socket.write(this.core.createJsonRpcResponse(this.requestId, success));
+		var ok = this.core.parameterCheck("registerModule", this.socket, this.requestId, arguments, {
+			name: "string",
+			methods: ["object","optional"]
+		});
+
+		if(!ok) {
+			return;
+		}
+
+		methods = methods || [];
+
+		var token = this.core.registerRpcModule(name, methods, this.socket);
+		this.socket.write(this.core.createJsonRpcResponse(this.requestId, token));
 	},
 
 	unregisterModule: function(name, token) {
@@ -552,6 +566,15 @@ var CoreModule = {
 	 * Test: {"result":true, "id":id+1}
 	 */
 	fireEvent: function(name, data) {
+		var ok = this.core.parameterCheck("fireEvent", this.socket, this.requestId, arguments, {
+			name:"string",
+			data:"object"
+		});
+
+		if(!ok) {
+			return;
+		}
+
 		var listeners = registeredEvents[name];
 
 		if(listeners === undefined) {
@@ -590,6 +613,15 @@ var CoreModule = {
 	 * or the callbackIdentifier is ill-formed.
 	 */
 	bindToEvent: function(identifier, callbackIdentifier) {
+		var ok = this.core.parameterCheck("bindToEvent", this.socket, this.requestId, arguments, {
+			identifier: "string",
+			callbackIdentifier: "string"
+		});
+
+		if(!ok) {
+			return;
+		}
+
 		var composite = callbackIdentifier.split('.');
 
 		if( composite.length != 2 ) {
@@ -622,6 +654,13 @@ var CoreModule = {
 	 * Return true if the event was unbind, otherwise false.
 	 */
 	unbindFromEvent: function(eventId) {
+		var ok = this.core.parameterCheck("unbindFromEvent", this.socket, this.requestId, arguments, {
+			eventId: "number"
+		});
+
+		if(!ok) {
+			return;
+		}
 
 		// TODO check calling module (it shall own the event to unbind it)
 
