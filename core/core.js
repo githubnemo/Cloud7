@@ -198,6 +198,11 @@ Core.prototype = {
 	 * RPC. Local modules don't do that but they should be able to use the
 	 * API. This method enables that.
 	 *
+	 * Note that by using a fake socket, strange behaviour may occur.
+	 * For example if you're using Core.registerModule: The module socket
+	 * will be that very fake socket and all answers of a event call will
+	 * be written to the module socket.
+	 *
 	 * Example:
 	 *
 	 * 	// from a local module
@@ -553,6 +558,10 @@ var CoreModule = {
 	 * name: String
 	 * data: Array
 	 *
+	 * If there are no listeners to the event, fireEvent returns false. Otherwise
+	 * it returns true. If an error occurs while dispatching to a module,
+	 * the module is skipped.
+	 *
 	 * How it works:
 	 *
 	 * Peers: {"method":"Core.fireEvent", "params":["Peers.joinedNetwork", ["HAW"]], id:123}
@@ -578,7 +587,7 @@ var CoreModule = {
 		var listeners = registeredEvents[name];
 
 		if(listeners === undefined) {
-			// TODO error to sender
+			this.socket.write(this.core.createJsonRpcResponse(this.requestId, false));
 			return;
 		}
 
@@ -586,12 +595,11 @@ var CoreModule = {
 			var row = eventIdToEvent[listeners[i]];
 
 			var module = registeredModules[row[1]];
-			var method = module.getMethod(row[2], true);
+			var method = module.getMethod(row[2], true); // get hidden methods too == true
 
 			if(typeof method !== 'function') {
-				console.log("Can't fire event "+name+" to "+module+": No method.");
-				// TODO error to sender
-				return;
+				console.log("Can't fire event "+name+" to "+module+": No method. (", row[2],")");
+				continue;
 			}
 
 			method.apply({
@@ -600,6 +608,8 @@ var CoreModule = {
 				requestId: this.core.generateRequestId(),
 				core: this.core}, data);
 		}
+
+		this.socket.write(this.core.createJsonRpcResponse(this.requestId, true));
 	},
 
 	/*
@@ -797,7 +807,7 @@ RpcModule.prototype = {
 			var module = this;
 			return function() {
 				// Proxy method
-				console.log("Proxycall to",name);
+				//console.log("Proxycall to",name);
 
 				var moduleName = module.name;
 				var requestId = this.requestId;
@@ -948,7 +958,7 @@ var core = new Core(function() {
 		process.exit();
 	}
 
-	this.getModule("Core").obj.fireEvent("Core.initDone", []);
+	this.callRpcMethodLocal("Core.fireEvent", ["Core.initDone", []]);
 
 	// TODO better solution for port configuration
 	if(process.argv.length > 2) {
