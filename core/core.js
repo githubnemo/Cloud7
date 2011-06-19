@@ -309,6 +309,87 @@ Core.prototype = {
 		}
 	},
 
+	/**
+	 * Simple parameter check. Checks if all not optional parameters are
+	 * given and if they've the correct type. You can't supply more than
+	 * one type, also you can't put optional parameters at the beginning.
+	 *
+	 * methodName: Name of the method to check
+	 * socket: Socket to response on
+	 * reqId: request id for the response
+	 * parameters: the parameters given by the user
+	 * paramTypes: mapping of parameter name to expected type ("any" for any type)
+	 *
+	 * Example:
+	 *
+	 *  function myMethod(first, second) {
+	 *   var ok = parameterCheck("myMethod", socket, id, arguments, {
+	 *	 	first: "string",
+	 *		second: ["function", "optional"]
+	 *   });
+	 *   if(!ok) return;
+	 *   // ...
+	 *  }
+	 */
+	parameterCheck: function(methodName, socket, reqId, parameters, paramTypes) {
+		var minParamCount = Object.keys(paramTypes).filter(function(key) {
+			return (paramTypes[key][1] === "optional") ? false : true;
+		}).length;
+
+		var maxParamCount = Object.keys(paramTypes).length;
+
+		if(parameters.length < minParamCount || parameters.length > maxParamCount) {
+			if(minParamCount == maxParamCount) {
+				socket.write(this.createJsonRpcError(reqId,
+							"Invalid param count. "+methodName+" takes "+minParamCount+" parameters.",
+							this.json_errors.invalid_params));
+			} else {
+				socket.write(this.createJsonRpcError(reqId,
+							"Invalid param count. "+methodName+" takes at least "+minParamCount+" and max. "+maxParamCount+" parameters.",
+							this.json_errors.invalid_params));
+			}
+			return false;
+		}
+
+		var paramIndex = 0;
+
+		//console.log("parameters", parameters);
+
+		for(var paramName in paramTypes) {
+			var expectedType = paramTypes[paramName];
+			var optional = false;
+
+			// Parameter info is given as array, unpack it
+			if(paramTypes[paramName][1] === "optional") {
+				expectedType = paramTypes[paramName][0];
+				optional = true;
+			}
+
+			// Check if parameter is missing
+			if(parameters[paramIndex] === undefined && !optional) {
+				socket.write(this.createJsonRpcError(reqId,
+						paramIndex+". ("+paramName+") parameter is missing.",
+						this.json_errors.invalid_params));
+				return false;
+			} else if(parameters[paramIndex] === undefined && optional) {
+				continue;
+			}
+
+			// Check if parameter has correct type
+			if(expectedType != "any" && typeof parameters[paramIndex] != expectedType) {
+				socket.write(this.createJsonRpcError(reqId,
+						paramIndex+". ("+paramName+") parameter must be of type "+expectedType+".",
+						this.json_errors.invalid_params));
+				return false;
+			}
+
+			paramIndex++;
+		}
+
+		return true;
+	},
+
+
 	/*
 	 * JSON definitions / methods
 	 */
